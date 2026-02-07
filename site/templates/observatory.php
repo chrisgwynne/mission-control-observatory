@@ -66,7 +66,7 @@ function getAgentDisplay($agent) {
 
 // Helper function to extract emoji from text
 function extractEmoji(&$text) {
-    global $emojiReactions;
+    $emojiReactions = ['😤', '😊', '💭', '🤔', '👍', '👀', '🎯', '🔥', '💡', '🚀', '✅', '⚡'];
     foreach ($emojiReactions as $emoji) {
         if (strpos($text, $emoji) !== false) {
             $text = str_replace($emoji, '', $text);
