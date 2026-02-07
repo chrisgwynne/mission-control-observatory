@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-02-07T19:35:05.349428",
+  "updated_at": "2026-02-07T19:47:03.768449",
   "system_status": "operational",
   "agents": {
     "minion": {
@@ -10,7 +10,7 @@
       "color": "#6366f1",
       "icon": "\ud83c\udfaf",
       "last_activity": "2026-02-07 18:43",
-      "current_task": "Handoff"
+      "current_task": null
     },
     "scout": {
       "status": "working",
@@ -20,7 +20,7 @@
       "color": "#22c55e",
       "icon": "\ud83d\udd0d",
       "last_activity": "2026-02-07 18:43",
-      "current_task": "scan with improved detection"
+      "current_task": "also fixed. All 6 sales today properly tracked."
     },
     "sage": {
       "status": "asleep",
