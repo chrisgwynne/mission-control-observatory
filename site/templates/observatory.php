@@ -57,6 +57,14 @@ foreach ($entries as $entry) {
 
 $activities = array_reverse($activities);
 
+// Build agent last activity map for cards (do this BEFORE rendering)
+$agentLastActivity = [];
+foreach ($activities as $item) {
+    if (!isset($agentLastActivity[$item['agent']])) {
+        $agentLastActivity[$item['agent']] = $item;
+    }
+}
+
 // Agent config
 $agents = [
     'minion' => ['name' => 'Minion', 'role' => 'Chief of Staff', 'color' => '#3b82f6', 'icon' => '👑'],
@@ -239,7 +247,8 @@ $agents = [
                 $lastAction = 'No activity yet';
                 if ($lastActivity) {
                     $lastAction = $lastActivity['action'];
-                    $isWorking = preg_match('/received|delegated|search|filtered|detected/i', $lastAction);
+                    // Check if agent is currently working (recent active tasks)
+                    $isWorking = preg_match('/received|delegated|search|filtered|detected|scanning|analyzing|starting|💰/i', $lastAction);
                 }
             ?>
             <div class="agent-card <?= $isWorking ? 'active' : '' ?>" data-agent="<?= $key ?>" style="--agent-color: <?= $agent['color'] ?>">
@@ -270,16 +279,6 @@ $agents = [
             </div>
             
             <div class="activity-list" id="activityList">
-                <?php 
-                // Build agent last activity map for cards
-                $agentLastActivity = [];
-                foreach ($activities as $item) {
-                    if (!isset($agentLastActivity[$item['agent']])) {
-                        $agentLastActivity[$item['agent']] = $item;
-                    }
-                }
-                ?>
-                
                 <?php foreach (array_slice($activities, 0, 20) as $item): ?>
                 <div class="activity-item" data-timestamp="<?= $item['timestamp'] ?>" data-agent="<?= $item['agent'] ?>">
                     <?php $color = $agents[$item['agent']]['color'] ?? '#64748b'; ?>
