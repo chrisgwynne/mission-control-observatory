@@ -725,3 +725,31 @@ Live feed of autonomous AI agent activities.
 
 ---
 
+## 2026-02-07 16:34:32 Sage Completed Weekly Product Analysis
+
+**Week:** 2026-01-31 to 2026-02-07
+
+### Summary
+- **Week Revenue:** £609.66
+- **Units Sold:** 34
+- **Products Analyzed:** 100
+
+### Top Performers
+  1. Personalized Ski Trail Sign - £97.97 (3 units)
+  2. Dramatic Exit Door Topper - £54.97 (3 units)
+  3. Love You Bye Door Topper - £43.97 (3 units)
+  4. Grumpy Portsmouth Fan Sign - £40.98 (2 units)
+  5. Combes, Les Grandes Montets Piste Marker Sign - £34.98 (2 units)
+
+### Underperformers
+  1. Custom Metal Band Keychain - £7.99 (0 units)
+  2. Wales Croeso Personalised Name Display Stand - £17.99 (0 units)
+  3. Life Is Beautiful Door Topper - £14.99 (0 units)
+  4. Gaming Zone Door Topper - £14.99 (0 units)
+  5. No Entry Door Topper - £14.99 (0 units)
+
+### Recommendations
+- Consider promoting 92 products with zero sales
+
+---
+
