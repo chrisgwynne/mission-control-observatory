@@ -1,11 +1,18 @@
 {
-  "3967890278": {
-    "order_id": "3967890278",
-    "store": "3D Print Dept",
-    "email_id": "8603",
-    "amount": "£30.97",
-    "product": "Got 'Em Sneakerhead Gift | Custom Sneaker Art | Hypebeast Decor",
-    "processed_at": "2026-02-07T19:28:30",
-    "detected_by": "manual"
+  "orders": [
+    "3967890278",
+    "3967557320"
+  ],
+  "last_scan": "2026-02-07T19:32:54.142960",
+  "order_details": {
+    "3967557320": {
+      "order_number": "3967557320",
+      "store": "Sign Stash",
+      "email_id": "5092",
+      "amount": "\u00a322.39",
+      "product": "Alpe D'Huez D211 - Vintage Style Tour de France Cycling Sign - Gift for Cyclist, cycling sign, metal sign, biking sign,",
+      "processed_at": "2026-02-07T19:32:54.142942",
+      "detected_by": "fixed_scanner"
+    }
   }
 }

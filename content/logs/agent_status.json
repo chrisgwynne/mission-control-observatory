@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-02-07T19:25:45.346542",
+  "updated_at": "2026-02-07T19:30:08.077900",
   "system_status": "operational",
   "agents": {
     "minion": {
@@ -20,7 +20,7 @@
       "color": "#22c55e",
       "icon": "\ud83d\udd0d",
       "last_activity": "2026-02-07 18:43",
-      "current_task": "Etsy Trend Analysis"
+      "current_task": "manual sales scan across all stores"
     },
     "sage": {
       "status": "asleep",
