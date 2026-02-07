@@ -233,8 +233,16 @@ $agents = [
 
         <!-- Agent Status Cards -->
         <div class="agent-grid">
-            <?php foreach ($agents as $key => $agent): ?>
-            <div class="agent-card" data-agent="<?= $key ?>" style="--agent-color: <?= $agent['color'] ?>">
+            <?php foreach ($agents as $key => $agent): 
+                $lastActivity = $agentLastActivity[$key] ?? null;
+                $isWorking = false;
+                $lastAction = 'No activity yet';
+                if ($lastActivity) {
+                    $lastAction = $lastActivity['action'];
+                    $isWorking = preg_match('/received|delegated|search|filtered|detected/i', $lastAction);
+                }
+            ?>
+            <div class="agent-card <?= $isWorking ? 'active' : '' ?>" data-agent="<?= $key ?>" style="--agent-color: <?= $agent['color'] ?>">
                 <div class="agent-header">
                     <div class="agent-avatar"><?= $agent['icon'] ?></div>
                     <div class="agent-info">
@@ -243,10 +251,10 @@ $agents = [
                     </div>
                 </div>
                 <div class="agent-status">
-                    <span class="status-dot" id="status-<?= $key ?>"></span>
-                    <span class="status-text" id="status-text-<?= $key ?>">Idle</span>
+                    <span class="status-dot <?= $isWorking ? 'working' : 'idle' ?>"></span>
+                    <span class="status-text <?= $isWorking ? 'working' : '' ?>"><?= $isWorking ? 'Working' : 'Idle' ?></span>
                 </div>
-                <div class="last-action" id="action-<?= $key ?>">Waiting...</div>
+                <div class="last-action"><?= $lastAction ?></div>
             </div>
             <?php endforeach; ?>
         </div>
@@ -262,8 +270,18 @@ $agents = [
             </div>
             
             <div class="activity-list" id="activityList">
+                <?php 
+                // Build agent last activity map for cards
+                $agentLastActivity = [];
+                foreach ($activities as $item) {
+                    if (!isset($agentLastActivity[$item['agent']])) {
+                        $agentLastActivity[$item['agent']] = $item;
+                    }
+                }
+                ?>
+                
                 <?php foreach (array_slice($activities, 0, 20) as $item): ?>
-                <div class="activity-item" data-timestamp="<?= $item['timestamp'] ?>">
+                <div class="activity-item" data-timestamp="<?= $item['timestamp'] ?>" data-agent="<?= $item['agent'] ?>">
                     <?php $color = $agents[$item['agent']]['color'] ?? '#64748b'; ?>
                     <?php $icons = ['system' => '⚡', 'search' => '🔍', 'complete' => '✅']; ?>
                     
