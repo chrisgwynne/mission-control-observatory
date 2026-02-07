@@ -124,10 +124,10 @@ function getEntryIcon($type, $agent) {
     return $icons[strtolower($type)] ?? '📌';
 }
 
-function renderEntry($activity, $agentColors, $getAgentDisplay, $isHidden = false) {
+function renderEntry($activity, $agentColors, $isHidden = false) {
     $agentKey = strtolower($activity['agent'] ?? 'system');
     $color = $agentColors[$agentKey] ?? '#6b7280';
-    $agentName = $getAgentDisplay($activity['agent'] ?? 'System');
+    $agentName = getAgentDisplay($activity['agent'] ?? 'System');
     $icon = getEntryIcon($activity['type'] ?? 'update', $agentKey);
     $timestamp = getRelativeTime($activity['timestamp']);
     $hiddenClass = $isHidden ? 'hidden-entry' : '';
@@ -147,7 +147,7 @@ function renderEntry($activity, $agentColors, $getAgentDisplay, $isHidden = fals
                     <div class="conversation-line <?= $i === 0 ? 'main' : 'reply' ?>">
                         <?php if ($i === 0): ?>
                             <span class="entry-agent agent-<?= strtolower($msg['agent']) ?>" style="color: <?= $agentColors[strtolower($msg['agent'])] ?? '#6b7280' ?>">
-                                <?= $getAgentDisplay($msg['agent']) ?>
+                                <?= getAgentDisplay($msg['agent']) ?>
                             </span>
                             <?php if (!empty($msg['emoji'])): ?>
                                 <span class="entry-emoji"><?= htmlspecialchars($msg['emoji']) ?></span>
@@ -160,7 +160,7 @@ function renderEntry($activity, $agentColors, $getAgentDisplay, $isHidden = fals
                         <?php else: ?>
                             <span class="indent">↳</span>
                             <span class="entry-agent agent-<?= strtolower($msg['agent']) ?>" style="color: <?= $agentColors[strtolower($msg['agent'])] ?? '#6b7280' ?>">
-                                <?= $getAgentDisplay($msg['agent']) ?>
+                                <?= getAgentDisplay($msg['agent']) ?>
                             </span>
                             <span class="bidirectional-arrow">↔</span>
                             <span class="entry-content"><?= htmlspecialchars($msg['cleanMessage'] ?? $msg['message']) ?></span>
@@ -374,6 +374,7 @@ if (!empty($hourGroup)) {
 }
 
 $collapsedSections = [];
+if (!empty($agentActivities)) {
 foreach ($agentActivities as $agent => $agentActs) {
     if (count($agentActs) > 3) {
         $collapsedSections[$agent] = [
@@ -382,6 +383,7 @@ foreach ($agentActivities as $agent => $agentActs) {
             'count' => count($agentActs) - 3
         ];
     }
+}
 }
 
 $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
@@ -864,15 +866,15 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
                         <div class="hour-group">
                             <div class="collapsible-section" data-agent="<?= $agent ?>">
                                 <?php foreach ($section['visible'] as $activity): ?>
-                                    <?= renderEntry($activity, $agentColors, 'getAgentDisplay') ?>
+                                    <?= renderEntry($activity, $agentColors) ?>
                                 <?php endforeach; ?>
                                 <div class="expand-toggle" onclick="toggleSection('<?= $agent ?>')">
-                                    <span>↓ <?= $section['count'] ?> more <?= $agentName ?> pulses ▼</span>
+                                    <span>↓ <?= $section['count'] ?> more <?= getAgentDisplay($agent) ?> pulses ▼</span>
                                 </div>
                                 <div class="collapsed-entries" id="collapsed-<?= $agent ?>">
                                     <?php foreach ($section['hidden'] as $activity): ?>
                                         <div class="hidden-entry">
-                                            <?= renderEntry($activity, $agentColors, 'getAgentDisplay') ?>
+                                            <?= renderEntry($activity, $agentColors, true) ?>
                                         </div>
                                     <?php endforeach; ?>
                                 </div>
@@ -885,7 +887,7 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
                         <div class="hour-group">
                             <div class="hour-label"><?= $hour ?></div>
                             <?php foreach ($hourActivities as $activity): ?>
-                                <?= renderEntry($activity, $agentColors, 'getAgentDisplay') ?>
+                                <?= renderEntry($activity, $agentColors) ?>
                             <?php endforeach; ?>
                         </div>
                     <?php endforeach; ?>
