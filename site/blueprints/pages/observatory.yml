@@ -1,0 +1,15 @@
+title: Observatory
+
+options:
+  preview: false
+  status: false
+  delete: false
+  changeSlug: false
+  changeTitle: false
+
+fields:
+  intro:
+    type: info
+    text: |
+      This page displays live activity from the Mission Control agent network.
+      Content is auto-generated from agent logs.
