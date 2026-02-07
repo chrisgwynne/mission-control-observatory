@@ -21,12 +21,12 @@ $agentColors = [
     'jarvis' => '#3b82f6'       // Blue (uses Minion color)
 ];
 
-// Emoji reactions for emotions
+// Emoji reactions
 $emojiReactions = ['😤', '😊', '💭', '🤔', '👍', '👀', '🎯', '🔥', '💡', '🚀', '✅', '⚡'];
 
 // Get file modification time
 $logMtime = file_exists($workspaceLog) ? filemtime($workspaceLog) : time();
-$source = 'workspace (live) - Updated: ' . date('H:i:s', $logMtime);
+$source = 'workspace (live) - ' . date('H:i:s', $logMtime);
 
 // Load agent status
 $agentStatuses = [];
@@ -35,25 +35,21 @@ if (file_exists($agentStatusFile)) {
     $agentStatuses = $statusData['agents'] ?? [];
 }
 
-// Count missions from activity
+// Count missions
 $missionCount = 0;
-$activeMission = null;
 
-// Helper function to get relative time
+// Helper functions
 function getRelativeTime($timestamp) {
     $now = time();
     $ts = strtotime($timestamp);
     if (!$ts) return $timestamp;
-
     $diff = $now - $ts;
-
     if ($diff < 60) return 'Just now';
     if ($diff < 3600) return floor($diff / 60) . 'm ago';
     if ($diff < 86400) return floor($diff / 3600) . 'h ago';
     return floor($diff / 86400) . 'd ago';
 }
 
-// Helper function to get agent display name
 function getAgentDisplay($agent) {
     $names = [
         'minion' => 'Minion',
@@ -68,7 +64,6 @@ function getAgentDisplay($agent) {
     return $names[strtolower($agent)] ?? ucfirst($agent);
 }
 
-// Helper function to extract emoji from text
 function extractEmoji(&$text) {
     global $emojiReactions;
     foreach ($emojiReactions as $emoji) {
@@ -80,49 +75,124 @@ function extractEmoji(&$text) {
     return '';
 }
 
-// Helper function to format "makes a move" actions
 function formatMoveAction($text) {
-    // Pattern: Agent makes a move: Action • Details
     if (preg_match('/^(.+?)\s+makes a move:\s*(.+?)(\s+•\s+(.+))?$/', $text, $matches)) {
-        $action = trim($matches[2]);
-        $details = isset($matches[4]) ? trim($matches[4]) : '';
         return [
-            'action' => $action,
-            'details' => $details
+            'action' => trim($matches[2]),
+            'details' => isset($matches[4]) ? trim($matches[4]) : ''
         ];
     }
     return null;
 }
 
-// Helper function to extract meta-commentary
 function extractMetaCommentary($text) {
-    // Pattern: *action* at start of message
     if (preg_match('/^\*([^*]+)\*\s*(.*)$/', $text, $matches)) {
-        return [
-            'meta' => trim($matches[1]),
-            'message' => trim($matches[2])
-        ];
+        return ['meta' => trim($matches[1]), 'message' => trim($matches[2])];
     }
     return null;
 }
 
-// Helper function to detect proposal workflow
-function detectProposalWorkflow($text) {
+function detectWorkflow($text) {
     $text = strtolower($text);
-
-    if (strpos($text, 'proposed') !== false || strpos($text, 'proposal') !== false) {
-        return 'proposed';
-    }
-    if (strpos($text, 'approved') !== false) {
-        return 'approved';
-    }
-    if (strpos($text, 'mission created') !== false || strpos($text, 'created') !== false) {
-        return 'created';
-    }
-    if (strpos($text, 'posted') !== false || strpos($text, 'published') !== false) {
-        return 'posted';
-    }
+    if (strpos($text, 'proposed') !== false || strpos($text, 'proposal') !== false) return 'proposed';
+    if (strpos($text, 'approved') !== false) return 'approved';
+    if (strpos($text, 'mission created') !== false || strpos($text, 'created') !== false) return 'created';
+    if (strpos($text, 'posted') !== false || strpos($text, 'published') !== false) return 'posted';
     return null;
+}
+
+function isPulseEntry($text, $agent) {
+    if (stripos($text, 'Pulse') !== false) return true;
+    if (preg_match('/next:\s*\w+/i', $text)) return true;
+    return false;
+}
+
+function getEntryIcon($type, $agent) {
+    $icons = [
+        'conversation' => '💬',
+        'sale' => '💰',
+        'security' => '🛡️',
+        'pulse' => '⚡',
+        'update' => '🔄',
+        'idea' => '💡',
+        'complete' => '✅',
+        'alert' => '⚠️',
+        'analysis' => '📊',
+        'task' => '📋',
+        'move' => '⚡'
+    ];
+    return $icons[strtolower($type)] ?? '📌';
+}
+
+function renderEntry($activity, $agentColors, $getAgentDisplay, $isHidden = false) {
+    $agentKey = strtolower($activity['agent'] ?? 'system');
+    $color = $agentColors[$agentKey] ?? '#6b7280';
+    $agentName = $getAgentDisplay($activity['agent'] ?? 'System');
+    $icon = getEntryIcon($activity['type'] ?? 'update', $agentKey);
+    $timestamp = getRelativeTime($activity['timestamp']);
+    $hiddenClass = $isHidden ? 'hidden-entry' : '';
+
+    ob_start();
+    ?>
+    <div class="entry <?= $hiddenClass ?>">
+        <span class="entry-timestamp"><?= $timestamp ?></span>
+        <span class="entry-agent agent-<?= $agentKey ?>" style="color: <?= $color ?>">
+            <a href="/agents/<?= strtolower($activity['agent'] ?? 'system') ?>" style="color: inherit"><?= $agentName ?></a>
+        </span>
+
+        <?php if (!empty($activity['isConversation'])): ?>
+            <span class="entry-icon"><?= $icon ?></span>
+            <div class="conversation-entry">
+                <?php foreach ($activity['messages'] as $i => $msg): ?>
+                    <div class="conversation-line <?= $i === 0 ? 'main' : 'reply' ?>">
+                        <?php if ($i === 0): ?>
+                            <span class="entry-agent agent-<?= strtolower($msg['agent']) ?>" style="color: <?= $agentColors[strtolower($msg['agent'])] ?? '#6b7280' ?>">
+                                <?= $getAgentDisplay($msg['agent']) ?>
+                            </span>
+                            <?php if (!empty($msg['emoji'])): ?>
+                                <span class="entry-emoji"><?= htmlspecialchars($msg['emoji']) ?></span>
+                            <?php endif; ?>
+                            <span class="arrow">→</span>
+                            <?php if (!empty($msg['meta'])): ?>
+                                <span class="meta-commentary">*<?= htmlspecialchars($msg['meta']) ?>*</span>
+                            <?php endif; ?>
+                            <span class="entry-content"><?= htmlspecialchars($msg['cleanMessage'] ?? $msg['message']) ?></span>
+                        <?php else: ?>
+                            <span class="indent">↳</span>
+                            <span class="entry-agent agent-<?= strtolower($msg['agent']) ?>" style="color: <?= $agentColors[strtolower($msg['agent'])] ?? '#6b7280' ?>">
+                                <?= $getAgentDisplay($msg['agent']) ?>
+                            </span>
+                            <span class="bidirectional-arrow">↔</span>
+                            <span class="entry-content"><?= htmlspecialchars($msg['cleanMessage'] ?? $msg['message']) ?></span>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php elseif (!empty($activity['isMove'])): ?>
+            <span class="entry-icon"><?= $icon ?></span>
+            <span class="move-action"><?= htmlspecialchars($agentName) ?> makes a move: <?= htmlspecialchars($activity['action']) ?></span>
+            <?php if (!empty($activity['workflow'])): ?>
+                <span class="workflow-badge workflow-<?= $activity['workflow'] ?>">
+                    <?= htmlspecialchars(ucfirst($activity['workflow'])) ?>
+                </span>
+            <?php endif; ?>
+            <?php if (!empty($activity['details'])): ?>
+                <span class="move-details"><?= htmlspecialchars($activity['details']) ?></span>
+            <?php endif; ?>
+        <?php elseif (!empty($activity['isPulse'])): ?>
+            <span class="pulse-label">Pulse</span>
+            <span class="entry-icon"><?= $icon ?></span>
+            <span class="entry-content"><?= htmlspecialchars($activity['action']) ?></span>
+        <?php else: ?>
+            <span class="entry-icon"><?= $icon ?></span>
+            <span class="entry-content"><?= htmlspecialchars($activity['action'] ?? '') ?></span>
+            <?php if (!empty($activity['details'])): ?>
+                <br><small><?= htmlspecialchars(implode(' | ', $activity['details'])) ?></small>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+    <?php
+    return ob_get_clean();
 }
 
 // Parse entries
@@ -135,27 +205,21 @@ if (file_exists($workspaceLog)) {
         $entry = trim($entry);
         if (empty($entry) || strpos($entry, '# Mission Control Activity Log') !== false) continue;
 
-        // Count missions
         if (strpos(strtolower($entry), 'mission') !== false) {
             global $missionCount;
             $missionCount++;
         }
 
-        // Check for hourly check-in conversations
         if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+🔄\s+Hourly Check-in:\s*(.+)$/m', $entry, $matches)) {
             $timestamp = $matches[1];
             $topic = $matches[2];
-
             preg_match('/\*\*Participants:\*\*\s*(.+)/m', $entry, $partMatch);
-            $participants = $partMatch ? trim($partMatch[1]) : 'Various agents';
-
             preg_match_all('/\*\*(\w+):\*\*\s*(.+?)(?=\n\*\*|$)/s', $entry, $msgMatches, PREG_SET_ORDER);
             $messages = [];
             foreach ($msgMatches as $mm) {
                 $msgText = trim($mm[2]);
                 $emoji = extractEmoji($msgText);
                 $meta = extractMetaCommentary($msgText);
-
                 $messages[] = [
                     'agent' => strtolower($mm[1]),
                     'message' => $msgText,
@@ -164,7 +228,6 @@ if (file_exists($workspaceLog)) {
                     'cleanMessage' => $meta['message'] ?? $msgText
                 ];
             }
-
             if (!empty($messages)) {
                 $activities[] = [
                     'timestamp' => $timestamp,
@@ -172,7 +235,7 @@ if (file_exists($workspaceLog)) {
                     'agentDisplay' => '🔄 Team',
                     'action' => "Hourly Check-in: $topic",
                     'type' => 'conversation',
-                    'participants' => $participants,
+                    'participants' => $partMatch ? trim($partMatch[1]) : 'Various agents',
                     'messages' => $messages,
                     'isConversation' => true
                 ];
@@ -180,47 +243,10 @@ if (file_exists($workspaceLog)) {
             continue;
         }
 
-        // Check for bidirectional conversation (Agent ↔ Agent)
-        if (preg_match('/(\w+)\s+↔+\s+(\w+)|(\w+)\s+↔\s+(\w+)/', $entry)) {
-            // This is a bidirectional conversation
-            preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/m', $entry, $timeMatch);
-            preg_match_all('/(\w+):\s*(.+?)(?=\s+(?:\w+:|$))/s', $entry, $msgMatches, PREG_SET_ORDER);
-
-            $timestamp = $timeMatch[1] ?? date('Y-m-d H:i:s');
-            $messages = [];
-
-            foreach ($msgMatches as $mm) {
-                $msgText = trim($mm[2]);
-                $emoji = extractEmoji($msgText);
-                $meta = extractMetaCommentary($msgText);
-
-                $messages[] = [
-                    'agent' => strtolower($mm[1]),
-                    'message' => $msgText,
-                    'emoji' => $emoji,
-                    'meta' => $meta['meta'] ?? '',
-                    'cleanMessage' => $meta['message'] ?? $msgText
-                ];
-            }
-
-            if (!empty($messages)) {
-                $activities[] = [
-                    'timestamp' => $timestamp,
-                    'agent' => $messages[0]['agent'] ?? 'system',
-                    'type' => 'conversation',
-                    'isBidirectional' => true,
-                    'messages' => $messages
-                ];
-            }
-            continue;
-        }
-
-        // Check for security alerts
         if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+🛡️\s*SECURITY/i', $entry, $matches)) {
             $timestamp = $matches[1];
             preg_match('/\*\*Type:\*\*\s*(.+)/m', $entry, $typeMatch);
             preg_match('/\*\*Status:\*\*\s*(.+)/m', $entry, $statusMatch);
-
             $activities[] = [
                 'timestamp' => $timestamp,
                 'agent' => 'observer',
@@ -231,12 +257,10 @@ if (file_exists($workspaceLog)) {
             continue;
         }
 
-        // Check for sales updates
         if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+.*💰/i', $entry, $matches)) {
             $timestamp = $matches[1];
             preg_match('/\*\*Store:\*\*\s*(.+)/m', $entry, $storeMatch);
             preg_match('/\*\*Revenue:\*\*\s*(.+)/m', $entry, $revMatch);
-
             $activities[] = [
                 'timestamp' => $timestamp,
                 'agent' => 'scout',
@@ -247,14 +271,13 @@ if (file_exists($workspaceLog)) {
             continue;
         }
 
-        // Check for "makes a move" system actions with proposal workflow
         if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\w+)\s+⚡\s*(.+)$/m', $entry, $matches)) {
             $timestamp = $matches[1];
             $agent = strtolower($matches[2]);
             $actionText = trim($matches[3]);
-
+            $isPulse = isPulseEntry($actionText, $agent);
             $moveData = formatMoveAction($actionText);
-            $workflow = detectProposalWorkflow($actionText);
+            $workflow = detectWorkflow($actionText);
 
             if ($moveData) {
                 $activities[] = [
@@ -262,34 +285,32 @@ if (file_exists($workspaceLog)) {
                     'agent' => $agent,
                     'action' => $moveData['action'],
                     'details' => $moveData['details'],
-                    'type' => 'move',
+                    'type' => $isPulse ? 'pulse' : 'move',
                     'workflow' => $workflow,
-                    'isMove' => true
+                    'isMove' => true,
+                    'isPulse' => $isPulse
                 ];
-                continue;
+            } elseif ($isPulse) {
+                $activities[] = [
+                    'timestamp' => $timestamp,
+                    'agent' => $agent,
+                    'action' => $actionText,
+                    'type' => 'pulse',
+                    'isPulse' => true
+                ];
             }
-
-            // Regular pulse
-            preg_match('/\*\*Status:\*\*\s*(.+)/m', $entry, $statusMatch);
-            $activities[] = [
-                'timestamp' => $timestamp,
-                'agent' => $agent,
-                'action' => $statusMatch ? trim($statusMatch[1]) : 'Pulse check',
-                'type' => 'pulse'
-            ];
             continue;
         }
 
-        // Standard entries
         if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\w+)\s+(.+)$/m', $entry, $matches)) {
             $timestamp = $matches[1];
             $agent = strtolower($matches[2]);
             $action = trim($matches[3]);
-
             if (strpos($action, '💬') !== false) continue;
 
             $moveData = formatMoveAction($action);
-            $workflow = detectProposalWorkflow($action);
+            $workflow = detectWorkflow($action);
+            $isPulse = isPulseEntry($action, $agent);
 
             if ($moveData) {
                 $activities[] = [
@@ -301,43 +322,68 @@ if (file_exists($workspaceLog)) {
                     'workflow' => $workflow,
                     'isMove' => true
                 ];
-                continue;
+            } else {
+                $activities[] = [
+                    'timestamp' => $timestamp,
+                    'agent' => $agent,
+                    'action' => $action,
+                    'type' => $isPulse ? 'pulse' : 'update',
+                    'isPulse' => $isPulse
+                ];
             }
-
-            $activities[] = [
-                'timestamp' => $timestamp,
-                'agent' => $agent,
-                'action' => $action,
-                'type' => 'update'
-            ];
         }
     }
 }
 
-// Reverse to show newest first
 $activities = array_reverse($activities);
 
-// Group activities by time clusters (within 2 minutes = same cluster)
-$clusteredActivities = [];
-$currentCluster = null;
-$clusterTime = null;
+// Group by agent for collapsible sections
+$agentActivities = [];
+foreach ($activities as $activity) {
+    $agent = $activity['agent'] ?? 'system';
+    if (!isset($agentActivities[$agent])) {
+        $agentActivities[$agent] = [];
+    }
+    $agentActivities[$agent][] = $activity;
+}
+
+foreach ($agentActivities as $agent => $agentActs) {
+    usort($agentActs, function($a, $b) {
+        return strtotime($a['timestamp']) - strtotime($b['timestamp']);
+    });
+    $agentActivities[$agent] = array_reverse($agentActs);
+}
+
+$groupedActivities = [];
+$currentHour = null;
+$hourGroup = [];
 
 foreach ($activities as $activity) {
-    $ts = strtotime($activity['timestamp']);
-    if (!$ts) continue;
+    $hour = date('H:00', strtotime($activity['timestamp']));
+    if ($hour !== $currentHour) {
+        if (!empty($hourGroup)) {
+            $groupedActivities[$currentHour] = $hourGroup;
+        }
+        $currentHour = $hour;
+        $hourGroup = [];
+    }
+    $hourGroup[] = $activity;
+}
+if (!empty($hourGroup)) {
+    $groupedActivities[$currentHour] = $hourGroup;
+}
 
-    if ($clusterTime === null || ($ts - $clusterTime) > 120) {
-        $clusteredActivities[] = [
-            'time' => $activity['timestamp'],
-            'activities' => [$activity]
+$collapsedSections = [];
+foreach ($agentActivities as $agent => $agentActs) {
+    if (count($agentActs) > 3) {
+        $collapsedSections[$agent] = [
+            'visible' => array_slice($agentActs, 0, 3),
+            'hidden' => array_slice($agentActs, 3),
+            'count' => count($agentActs) - 3
         ];
-        $clusterTime = $ts;
-    } else {
-        $clusteredActivities[count($clusteredActivities) - 1]['activities'][] = $activity;
     }
 }
 
-// Mission counter
 $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
 ?>
 <!DOCTYPE html>
@@ -362,21 +408,16 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
             --observer-color: #06b6d4;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'Fira Code', 'SF Mono', Monaco, 'Consolas', monospace;
             background: var(--bg-primary);
             color: var(--text-primary);
-            line-height: 1.7;
+            line-height: 1.75;
             min-height: 100vh;
         }
 
-        /* Header */
         .header {
             background: var(--bg-secondary);
             border-bottom: 1px solid var(--border);
@@ -387,7 +428,7 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
         }
 
         .header-content {
-            max-width: 1200px;
+            max-width: 1100px;
             margin: 0 auto;
             display: flex;
             justify-content: space-between;
@@ -413,15 +454,9 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
             font-size: 1.25rem;
         }
 
-        .logo-text {
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
+        .logo-text { font-size: 1.1rem; font-weight: 600; }
 
-        .nav-links {
-            display: flex;
-            gap: 1.5rem;
-        }
+        .nav-links { display: flex; gap: 1.5rem; }
 
         .nav-links a {
             color: var(--text-secondary);
@@ -430,9 +465,7 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
             transition: color 0.2s;
         }
 
-        .nav-links a:hover {
-            color: var(--text-primary);
-        }
+        .nav-links a:hover { color: var(--text-primary); }
 
         .status-indicator {
             display: flex;
@@ -451,36 +484,31 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.95); }
         }
 
-        /* Main content */
-        .main {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
+        .main { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+
+        .page-header { margin-bottom: 2rem; }
 
         .page-title {
-            font-size: 1.5rem;
+            font-size: 1.75rem;
             font-weight: 600;
             margin-bottom: 0.5rem;
-            color: var(--text-primary);
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--observer-color) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
-        .page-subtitle {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            margin-bottom: 2rem;
-        }
+        .page-subtitle { color: var(--text-muted); font-size: 0.9rem; }
 
-        /* Mission Counter */
         .mission-counter {
-            background: var(--bg-secondary);
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(34, 197, 94, 0.1) 100%);
             border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
             margin-bottom: 2rem;
             display: flex;
             align-items: center;
@@ -488,93 +516,106 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
         }
 
         .mission-label {
-            font-size: 1.25rem;
-            font-weight: 600;
+            font-size: 1.35rem;
+            font-weight: 700;
             color: var(--text-primary);
+            font-family: 'Fira Code', monospace;
+        }
+
+        .mission-progress { display: flex; gap: 0.5rem; }
+
+        .progress-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--border);
+            transition: all 0.3s ease;
+        }
+
+        .progress-dot.active {
+            background: var(--scout-color);
+            box-shadow: 0 0 12px rgba(34, 197, 94, 0.5);
         }
 
         .mission-status {
             font-size: 0.9rem;
             color: var(--text-muted);
+            padding: 0.5rem 1rem;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            border: 1px solid var(--border);
         }
 
-        .mission-progress {
-            display: flex;
-            gap: 0.5rem;
+        .agents-section { margin-bottom: 2rem; }
+
+        .section-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            letter-spacing: 0.1em;
         }
 
-        .progress-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: var(--border);
-        }
-
-        .progress-dot.active {
-            background: var(--scout-color);
-            box-shadow: 0 0 8px var(--scout-color);
-        }
-
-        /* Agent status cards */
         .agents-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.75rem;
         }
 
         .agent-card {
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: 10px;
-            padding: 1rem;
+            padding: 0.875rem 1rem;
             display: flex;
             align-items: center;
             gap: 0.75rem;
+            transition: all 0.2s ease;
+        }
+
+        .agent-card:hover {
+            border-color: var(--border-light);
+            transform: translateY(-1px);
         }
 
         .agent-avatar {
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
             border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.25rem;
+            font-size: 0.9rem;
             font-weight: 600;
             color: white;
+            flex-shrink: 0;
         }
 
-        .agent-info {
-            flex: 1;
-        }
+        .agent-info { flex: 1; min-width: 0; }
 
         .agent-name {
             font-size: 0.9rem;
             font-weight: 600;
             color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .agent-status {
             font-size: 0.75rem;
             color: var(--text-muted);
             text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
         }
 
-        .status-dot.working {
-            background: var(--scout-color);
-            box-shadow: 0 0 8px var(--scout-color);
-        }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+        .status-dot.active { background: var(--scout-color); box-shadow: 0 0 8px rgba(34, 197, 94, 0.5); }
+        .status-dot.awake { background: var(--quill-color); }
+        .status-dot.asleep { background: var(--text-muted); }
 
-        .status-dot.awake {
-            background: var(--quill-color);
-        }
-
-        .status-dot.asleep {
-            background: var(--text-muted);
-        }
-
-        /* Activity Feed */
         .feed {
             background: var(--bg-secondary);
             border: 1px solid var(--border);
@@ -592,7 +633,7 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
         }
 
         .feed-title {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             font-weight: 600;
             text-transform: uppercase;
             color: var(--text-primary);
@@ -601,86 +642,59 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
             gap: 0.5rem;
         }
 
-        .feed-source {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
+        .feed-source { font-size: 0.75rem; color: var(--text-muted); font-family: 'Fira Code', monospace; }
+        .feed-content { padding: 0.5rem 0; }
 
-        .feed-content {
-            padding: 1rem 1.5rem;
-        }
+        .hour-group { padding: 0.5rem 1.5rem; }
 
-        /* Time cluster */
-        .time-cluster {
-            margin-bottom: 1.5rem;
-        }
-
-        .cluster-time {
-            font-size: 0.75rem;
+        .hour-label {
+            font-size: 0.7rem;
             color: var(--text-muted);
             text-transform: uppercase;
+            letter-spacing: 0.05em;
             margin-bottom: 0.75rem;
             padding-bottom: 0.5rem;
             border-bottom: 1px solid var(--border);
         }
 
-        /* Entry styles - VoxYZ style */
         .entry {
-            padding: 0.75rem 0;
-            border-bottom: 1px solid var(--border);
+            padding: 0.65rem 0;
+            border-bottom: 1px solid rgba(30, 30, 46, 0.5);
             line-height: 1.8;
+            animation: fadeIn 0.3s ease;
         }
 
-        .entry:last-child {
-            border-bottom: none;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .entry-timestamp {
-            color: var(--text-muted);
-            font-size: 0.85rem;
-            margin-right: 0.75rem;
-        }
+        .entry:last-child { border-bottom: none; }
+        .hidden-entry { opacity: 0.6; padding: 0.4rem 0; border-bottom: 1px solid rgba(30, 30, 46, 0.3); }
+
+        .entry-timestamp { color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem; font-family: 'Fira Code', monospace; }
 
         .entry-agent {
             font-weight: 600;
-            font-size: 0.9rem;
-            margin-right: 0.5rem;
+            font-size: 0.875rem;
+            margin-right: 0.35rem;
         }
 
-        .entry-agent a {
-            text-decoration: none;
-            transition: opacity 0.2s;
-        }
+        .entry-agent a { text-decoration: none; transition: opacity 0.2s; }
+        .entry-agent a:hover { opacity: 0.7; }
 
-        .entry-agent a:hover {
-            opacity: 0.8;
-        }
+        .entry-emoji { margin-right: 0.35rem; }
+        .entry-icon { margin-right: 0.35rem; }
+        .entry-content { color: var(--text-secondary); font-size: 0.875rem; display: inline; }
 
-        .entry-emoji {
-            margin-right: 0.5rem;
-            font-size: 1rem;
-        }
+        .pulse-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-right: 0.35rem; }
 
-        .entry-icon {
-            margin-right: 0.5rem;
-        }
-
-        .entry-content {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            display: inline;
-        }
-
-        /* Move action styling */
-        .move-action {
-            color: var(--text-primary);
-            font-weight: 500;
-        }
+        .move-action { color: var(--text-primary); font-weight: 500; }
 
         .move-details {
             display: block;
             color: var(--text-muted);
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             margin-top: 0.25rem;
             padding-left: 1rem;
             border-left: 2px solid var(--border);
@@ -688,81 +702,57 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
 
         .workflow-badge {
             display: inline-block;
-            font-size: 0.7rem;
-            padding: 0.15rem 0.5rem;
+            font-size: 0.65rem;
+            padding: 0.2rem 0.5rem;
             border-radius: 4px;
             margin-left: 0.5rem;
             text-transform: uppercase;
             font-weight: 600;
+            vertical-align: middle;
         }
 
-        .workflow-proposed {
-            background: rgba(59, 130, 246, 0.2);
-            color: var(--minion-color);
-        }
+        .workflow-proposed { background: rgba(59, 130, 246, 0.15); color: var(--minion-color); border: 1px solid rgba(59, 130, 246, 0.3); }
+        .workflow-approved { background: rgba(34, 197, 94, 0.15); color: var(--scout-color); border: 1px solid rgba(34, 197, 94, 0.3); }
+        .workflow-created { background: rgba(168, 85, 247, 0.15); color: var(--sage-color); border: 1px solid rgba(168, 85, 247, 0.3); }
+        .workflow-posted { background: rgba(236, 72, 153, 0.15); color: var(--xalt-color); border: 1px solid rgba(236, 72, 153, 0.3); }
 
-        .workflow-approved {
-            background: rgba(34, 197, 94, 0.2);
-            color: var(--scout-color);
-        }
+        .meta-commentary { font-style: italic; color: var(--text-muted); font-size: 0.8rem; margin-right: 0.35rem; }
 
-        .workflow-created {
-            background: rgba(168, 85, 247, 0.2);
-            color: var(--sage-color);
-        }
-
-        .workflow-posted {
-            background: rgba(236, 72, 153, 0.2);
-            color: var(--xalt-color);
-        }
-
-        /* Meta commentary */
-        .meta-commentary {
-            font-style: italic;
-            color: var(--text-muted);
-            font-size: 0.85rem;
-            margin-right: 0.5rem;
-        }
-
-        /* Conversation threading */
-        .conversation-entry {
-            margin: 0.5rem 0;
-        }
+        .conversation-entry { margin: 0.35rem 0; }
 
         .conversation-line {
             display: flex;
             align-items: flex-start;
-            gap: 0.5rem;
-            margin: 0.25rem 0;
+            gap: 0.35rem;
+            margin: 0.2rem 0;
+            flex-wrap: wrap;
         }
 
-        .conversation-line.main {
-            margin-left: 0;
-        }
+        .conversation-line.reply { margin-left: 1.25rem; }
 
-        .conversation-line.reply {
-            margin-left: 1.5rem;
-        }
+        .arrow { color: var(--text-muted); font-size: 0.8rem; }
+        .bidirectional-arrow { color: var(--text-muted); font-size: 0.8rem; }
+        .indent { color: var(--text-muted); font-size: 0.8rem; }
 
-        .arrow {
+        .collapsible-section { margin: 0.5rem 0; }
+
+        .expand-toggle {
             color: var(--text-muted);
-            font-size: 0.85rem;
-            margin: 0 0.25rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.5rem 0;
+            transition: color 0.2s;
+            font-family: 'Fira Code', monospace;
         }
 
-        .bidirectional-arrow {
-            color: var(--text-muted);
-            font-size: 0.85rem;
-            margin: 0 0.25rem;
-        }
+        .expand-toggle:hover { color: var(--text-primary); }
 
-        .indent {
-            color: var(--text-muted);
-            font-size: 0.85rem;
-            margin: 0 0.5rem;
-        }
+        .collapsed-entries { display: none; }
+        .collapsed-entries.expanded { display: block; }
 
-        /* Agent colors */
         .agent-minion { color: var(--minion-color); }
         .agent-scout { color: var(--scout-color); }
         .agent-sage { color: var(--sage-color); }
@@ -771,12 +761,8 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
         .agent-observer { color: var(--observer-color); }
         .agent-system { color: var(--text-muted); }
 
-        /* Bold emphasis */
-        .entry-content strong {
-            color: var(--text-primary);
-        }
+        .entry-content strong { color: var(--text-primary); font-weight: 600; }
 
-        /* Footer */
         .footer {
             text-align: center;
             padding: 2rem;
@@ -786,16 +772,14 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
             margin-top: 2rem;
         }
 
-        /* No entries */
-        .no-entries {
-            text-align: center;
-            padding: 3rem;
-            color: var(--text-muted);
-        }
+        .no-entries { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
 
-        @keyframes pulseGreen {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
-            50% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+        @media (max-width: 768px) {
+            .header-content { flex-wrap: wrap; gap: 1rem; }
+            .nav-links { order: 3; width: 100%; justify-content: center; }
+            .mission-counter { flex-direction: column; gap: 1rem; text-align: center; }
+            .agents-grid { grid-template-columns: repeat(2, 1fr); }
+            .entry { font-size: 0.85rem; }
         }
     </style>
 </head>
@@ -814,14 +798,16 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
             </nav>
             <div class="status-indicator">
                 <div class="status-dot"></div>
-                <span>Live Feed</span>
+                <span>Live</span>
             </div>
         </div>
     </header>
 
     <main class="main">
-        <h1 class="page-title">📡 Observatory</h1>
-        <p class="page-subtitle">Real-time agent activity stream</p>
+        <div class="page-header">
+            <h1 class="page-title">📡 Observatory</h1>
+            <p class="page-subtitle">Real-time agent activity stream</p>
+        </div>
 
         <!-- Mission Counter -->
         <div class="mission-counter">
@@ -834,29 +820,32 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
             <div class="mission-status">Proposal auto-approved</div>
         </div>
 
-        <!-- Agent Status Cards -->
-        <div class="agents-grid">
-            <?php foreach ($agentStatuses as $agent => $status): ?>
-                <?php
-                $agentKey = strtolower($agent);
-                $color = $agentColors[$agentKey] ?? '#6b7280';
-                $statusClass = strtolower(str_replace(' ', '-', $status['status'] ?? 'asleep'));
-                $statusText = $status['status'] ?? 'Unknown';
-                $statusText = str_replace('Working', 'Active', $statusText);
-                ?>
-                <div class="agent-card">
-                    <div class="agent-avatar" style="background: <?= $color ?>">
-                        <?= strtoupper(substr($agent, 0, 1)) ?>
-                    </div>
-                    <div class="agent-info">
-                        <div class="agent-name"><?= $agent ?></div>
-                        <div class="agent-status">
-                            <span class="status-dot <?= $statusClass ?>"></span>
-                            <?= $statusText ?>
+        <!-- Agent Status Grid -->
+        <div class="agents-section">
+            <div class="section-title">Team Status</div>
+            <div class="agents-grid">
+                <?php foreach ($agentStatuses as $agent => $status): ?>
+                    <?php
+                    $agentKey = strtolower($agent);
+                    $color = $agentColors[$agentKey] ?? '#6b7280';
+                    $statusClass = strtolower(str_replace(' ', '-', $status['status'] ?? 'asleep'));
+                    $statusText = $status['status'] ?? 'Unknown';
+                    $statusText = str_replace('Working', 'Active', $statusText);
+                    ?>
+                    <div class="agent-card">
+                        <div class="agent-avatar" style="background: <?= $color ?>">
+                            <?= strtoupper(substr($agent, 0, 1)) ?>
+                        </div>
+                        <div class="agent-info">
+                            <div class="agent-name"><?= $agent ?></div>
+                            <div class="agent-status">
+                                <span class="status-dot <?= str_replace('active', 'active', $statusClass) ?>"></span>
+                                <?= $statusText ?>
+                            </div>
                         </div>
                     </div>
-                </div>
-            <?php endforeach; ?>
+                <?php endforeach; ?>
+            </div>
         </div>
 
         <!-- Activity Feed -->
@@ -866,99 +855,37 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
                 <div class="feed-source"><?= htmlspecialchars($source) ?></div>
             </div>
             <div class="feed-content">
-                <?php if (empty($clusteredActivities)): ?>
-                    <div class="no-entries">
-                        Waiting for agent activity...
-                    </div>
+                <?php if (empty($groupedActivities) && empty($collapsedSections)): ?>
+                    <div class="no-entries">Waiting for agent activity...</div>
                 <?php else: ?>
-                    <?php foreach ($clusteredActivities as $cluster): ?>
-                        <div class="time-cluster">
-                            <div class="cluster-time"><?= getRelativeTime($cluster['time']) ?></div>
-                            <?php foreach ($cluster['activities'] as $activity): ?>
-                                <?php
-                                $agentKey = strtolower($activity['agent'] ?? 'system');
-                                $color = $agentColors[$agentKey] ?? '#6b7280';
-                                $agentName = getAgentDisplay($activity['agent'] ?? 'System');
-                                $icon = getEntryIcon($activity['type'] ?? 'update', $agentKey);
-                                ?>
-                                <div class="entry">
-                                    <span class="entry-timestamp"><?= getRelativeTime($activity['timestamp']) ?></span>
-                                    <span class="entry-agent agent-<?= $agentKey ?>" style="color: <?= $color ?>">
-                                        <a href="/agents/<?= strtolower($activity['agent'] ?? 'system') ?>" style="color: inherit"><?= $agentName ?></a>
-                                    </span>
-
-                                    <?php if (!empty($activity['isConversation'])): ?>
-                                        <!-- Conversation threading -->
-                                        <span class="entry-icon"><?= $icon ?></span>
-                                        <div class="conversation-entry">
-                                            <?php foreach ($activity['messages'] as $i => $msg): ?>
-                                                <div class="conversation-line <?= $i === 0 ? 'main' : 'reply' ?>">
-                                                    <?php if ($i === 0): ?>
-                                                        <span class="entry-agent agent-<?= strtolower($msg['agent']) ?>" style="color: <?= $agentColors[strtolower($msg['agent'])] ?? '#6b7280' ?>">
-                                                            <?= getAgentDisplay($msg['agent']) ?>
-                                                        </span>
-                                                        <?php if (!empty($msg['emoji'])): ?>
-                                                            <span class="entry-emoji"><?= htmlspecialchars($msg['emoji']) ?></span>
-                                                        <?php endif; ?>
-                                                        <span class="arrow">→</span>
-                                                        <?php if (!empty($msg['meta'])): ?>
-                                                            <span class="meta-commentary">*<?= htmlspecialchars($msg['meta']) ?>*</span>
-                                                        <?php endif; ?>
-                                                        <span class="entry-content"><?= htmlspecialchars($msg['cleanMessage'] ?? $msg['message']) ?></span>
-                                                    <?php else: ?>
-                                                        <span class="indent">↳</span>
-                                                        <span class="entry-agent agent-<?= strtolower($msg['agent']) ?>" style="color: <?= $agentColors[strtolower($msg['agent'])] ?? '#6b7280' ?>">
-                                                            <?= getAgentDisplay($msg['agent']) ?>
-                                                        </span>
-                                                        <?php if (!empty($msg['emoji'])): ?>
-                                                            <span class="entry-emoji"><?= htmlspecialchars($msg['emoji']) ?></span>
-                                                        <?php endif; ?>
-                                                        <span class="bidirectional-arrow">↔</span>
-                                                        <span class="entry-content"><?= htmlspecialchars($msg['cleanMessage'] ?? $msg['message']) ?></span>
-                                                    <?php endif; ?>
-                                                </div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php elseif (!empty($activity['isBidirectional'])): ?>
-                                        <!-- Bidirectional conversation -->
-                                        <span class="entry-icon"><?= $icon ?></span>
-                                        <div class="conversation-entry">
-                                            <?php foreach ($activity['messages'] as $i => $msg): ?>
-                                                <div class="conversation-line <?= $i === 0 ? 'main' : 'reply' ?>">
-                                                    <?php if ($i > 0): ?>
-                                                        <span class="bidirectional-arrow">↔</span>
-                                                    <?php endif; ?>
-                                                    <span class="entry-agent agent-<?= strtolower($msg['agent']) ?>" style="color: <?= $agentColors[strtolower($msg['agent'])] ?? '#6b7280' ?>">
-                                                        <?= getAgentDisplay($msg['agent']) ?>
-                                                    </span>
-                                                    <?php if (!empty($msg['emoji'])): ?>
-                                                        <span class="entry-emoji"><?= htmlspecialchars($msg['emoji']) ?></span>
-                                                    <?php endif; ?>
-                                                    <span class="arrow">→</span>
-                                                    <span class="entry-content"><?= htmlspecialchars($msg['cleanMessage'] ?? $msg['message']) ?></span>
-                                                </div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php elseif (!empty($activity['isMove'])): ?>
-                                        <!-- "Makes a move" with workflow badges -->
-                                        <span class="entry-icon"><?= $icon ?></span>
-                                        <span class="move-action"><?= htmlspecialchars($agentName) ?> makes a move: <?= htmlspecialchars($activity['action']) ?></span>
-                                        <?php if (!empty($activity['workflow'])): ?>
-                                            <span class="workflow-badge workflow-<?= $activity['workflow'] ?>">
-                                                <?= htmlspecialchars(ucfirst($activity['workflow'])) ?>
-                                            </span>
-                                        <?php endif; ?>
-                                        <?php if (!empty($activity['details'])): ?>
-                                            <span class="move-details"><?= htmlspecialchars($activity['details']) ?></span>
-                                        <?php endif; ?>
-                                    <?php else: ?>
-                                        <span class="entry-icon"><?= $icon ?></span>
-                                        <span class="entry-content"><?= htmlspecialchars($activity['action'] ?? '') ?></span>
-                                        <?php if (!empty($activity['details'])): ?>
-                                            <br><small><?= htmlspecialchars(implode(' | ', $activity['details'])) ?></small>
-                                        <?php endif; ?>
-                                    <?php endif; ?>
+                    <!-- Collapsible sections -->
+                    <?php foreach ($collapsedSections as $agent => $section): ?>
+                        <?php $agentKey = strtolower($agent); $agentName = getAgentDisplay($agent); ?>
+                        <div class="hour-group">
+                            <div class="collapsible-section" data-agent="<?= $agent ?>">
+                                <?php foreach ($section['visible'] as $activity): ?>
+                                    <?= renderEntry($activity, $agentColors, 'getAgentDisplay') ?>
+                                <?php endforeach; ?>
+                                <div class="expand-toggle" onclick="toggleSection('<?= $agent ?>')">
+                                    <span>↓ <?= $section['count'] ?> more <?= $agentName ?> pulses ▼</span>
                                 </div>
+                                <div class="collapsed-entries" id="collapsed-<?= $agent ?>">
+                                    <?php foreach ($section['hidden'] as $activity): ?>
+                                        <div class="hidden-entry">
+                                            <?= renderEntry($activity, $agentColors, 'getAgentDisplay') ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+
+                    <!-- Regular chronological feed -->
+                    <?php foreach ($groupedActivities as $hour => $hourActivities): ?>
+                        <div class="hour-group">
+                            <div class="hour-label"><?= $hour ?></div>
+                            <?php foreach ($hourActivities as $activity): ?>
+                                <?= renderEntry($activity, $agentColors, 'getAgentDisplay') ?>
                             <?php endforeach; ?>
                         </div>
                     <?php endforeach; ?>
@@ -972,10 +899,19 @@ $missionLabel = $missionCount > 0 ? "MISSION $missionCount/20" : "MISSION 0/20";
     </footer>
 
     <script>
+        function toggleSection(agent) {
+            const section = document.getElementById('collapsed-' + agent);
+            const toggle = section.previousElementSibling;
+            if (section.classList.contains('expanded')) {
+                section.classList.remove('expanded');
+                toggle.innerHTML = '<span>↓ ' + toggle.textContent.match(/\d+/)[0] + ' more ' + agent + ' pulses ▼</span>';
+            } else {
+                section.classList.add('expanded');
+                toggle.innerHTML = '<span>↑ Hide ' + toggle.textContent.match(/\d+/)[0] + ' pulses ▲</span>';
+            }
+        }
         // Auto-refresh every 30 seconds
-        setInterval(() => {
-            location.reload();
-        }, 30000);
+        setInterval(() => { location.reload(); }, 30000);
     </script>
 </body>
 </html>
