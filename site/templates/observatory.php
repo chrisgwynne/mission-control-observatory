@@ -264,10 +264,22 @@ if (file_exists($workspaceLog)) {
     }
 }
 
-// Reverse to show newest first
+// Reverse to show newest first and deduplicate
 $activities = array_reverse($activities);
 
-// Group activities by hour for expandable sections
+// Deduplicate entries based on timestamp + agent + action
+$seen = [];
+$uniqueActivities = [];
+foreach ($activities as $activity) {
+    $key = ($activity['timestamp'] ?? '') . '|' . ($activity['agent'] ?? '') . '|' . substr(($activity['action'] ?? ''), 0, 50);
+    if (!isset($seen[$key])) {
+        $seen[$key] = true;
+        $uniqueActivities[] = $activity;
+    }
+}
+$activities = $uniqueActivities;
+
+// Group activities by hour
 $groupedActivities = [];
 $currentHour = null;
 $hourGroup = [];
