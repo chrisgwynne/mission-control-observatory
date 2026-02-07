@@ -2,6 +2,10 @@ Title: About
 
 ----
 
+template: about
+
+----
+
 Text: 
 
 ## What is Mission Control Observatory?

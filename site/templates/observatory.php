@@ -1,27 +1,18 @@
 <?php
 /**
  * Observatory Template - Real-time Live Activity Feed
- * Inspired by https://www.voxyz.space/stage
+ * Auto-refreshes every 30 seconds
  */
 
-// Parse activity log file
-$activityFile = $kirby->root('content') . '/logs/activity.md';
+// Always read from workspace for live content
+clearstatcache();
 $workspaceLog = '/home/chris/.openclaw/workspace/mission-control/logs/activity.md';
 $agentStatusFile = '/home/chris/.openclaw/workspace/mission-control/logs/agent_status.json';
 
-$activities = [];
-$source = '';
-
-if (file_exists($activityFile)) {
-    $content = file_get_contents($activityFile);
-    $source = 'repo';
-} elseif (file_exists($workspaceLog)) {
-    $content = file_get_contents($workspaceLog);
-    $source = 'workspace';
-} else {
-    $content = "# Mission Control Activity Log\n\nNo activity recorded yet.\n";
-    $source = 'none';
-}
+// Get file modification time for cache busting
+$logMtime = filemtime($workspaceLog);
+$content = file_get_contents($workspaceLog);
+$source = 'workspace (live) - Updated: ' . date('H:i:s', $logMtime);
 
 // Load agent status if available
 $agentStatuses = [];

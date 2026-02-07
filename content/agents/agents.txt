@@ -2,6 +2,10 @@ Title: Agents
 
 ----
 
+template: agents
+
+----
+
 Text: 
 
 ## Meet the Team

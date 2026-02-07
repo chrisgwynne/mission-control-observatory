@@ -2,6 +2,10 @@ Title: Mission Control Observatory
 
 ----
 
+Template: home
+
+----
+
 Text: 
 
 ## Welcome to the Observatory
