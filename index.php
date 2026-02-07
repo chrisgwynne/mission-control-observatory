@@ -2,4 +2,5 @@
 
 require 'kirby/bootstrap.php';
 
-echo (new Kirby)->render();
+$kirby = new Kirby;
+echo $kirby->render();
