@@ -248,7 +248,7 @@ $agents = [
                 if ($lastActivity) {
                     $lastAction = $lastActivity['action'];
                     // Check if agent is currently working (recent active tasks)
-                    $isWorking = preg_match('/received|delegated|search|filtered|detected|scanning|analyzing|starting|💰/i', $lastAction);
+                    $isWorking = preg_match('/received|delegated|search|filtered|detected|scanning|analyzed|starting|💰/i', $lastAction);
                 }
             ?>
             <div class="agent-card <?= $isWorking ? 'active' : '' ?>" data-agent="<?= $key ?>" style="--agent-color: <?= $agent['color'] ?>">
