@@ -21,6 +21,9 @@ $agentColors = [
     'jarvis' => '#3b82f6'       // Blue (uses Minion color)
 ];
 
+// Emoji reactions for emotions
+$emojiReactions = ['😤', '😊', '💭', '🤔', '👍', '👀', '🎯', '🔥', '💡', '🚀', '✅', '⚡'];
+
 // Get file modification time
 $logMtime = file_exists($workspaceLog) ? filemtime($workspaceLog) : time();
 $source = 'workspace (live) - Updated: ' . date('H:i:s', $logMtime);
@@ -61,6 +64,44 @@ function getAgentDisplay($agent) {
     return $names[strtolower($agent)] ?? ucfirst($agent);
 }
 
+// Helper function to extract emoji from text
+function extractEmoji(&$text) {
+    global $emojiReactions;
+    foreach ($emojiReactions as $emoji) {
+        if (strpos($text, $emoji) !== false) {
+            $text = str_replace($emoji, '', $text);
+            return ' ' . $emoji;
+        }
+    }
+    return '';
+}
+
+// Helper function to format "makes a move" actions
+function formatMoveAction($text) {
+    // Pattern: Agent makes a move: Action • Details
+    if (preg_match('/^(.+?)\s+makes a move:\s*(.+?)(\s+•\s+(.+))?$/', $text, $matches)) {
+        $action = trim($matches[2]);
+        $details = isset($matches[4]) ? trim($matches[4]) : '';
+        return [
+            'action' => $action,
+            'details' => $details
+        ];
+    }
+    return null;
+}
+
+// Helper function to extract meta-commentary
+function extractMetaCommentary($text) {
+    // Pattern: *action* at start of message
+    if (preg_match('/^\*([^*]+)\*\s*(.*)$/', $text, $matches)) {
+        return [
+            'meta' => trim($matches[1]),
+            'message' => trim($matches[2])
+        ];
+    }
+    return null;
+}
+
 // Helper function to get icon for entry type
 function getEntryIcon($type, $agent) {
     $icons = [
@@ -73,7 +114,8 @@ function getEntryIcon($type, $agent) {
         'complete' => '✅',
         'alert' => '⚠️',
         'analysis' => '📊',
-        'task' => '📋'
+        'task' => '📋',
+        'move' => '⚡'
     ];
     return $icons[strtolower($type)] ?? '📌';
 }
@@ -94,12 +136,22 @@ if (file_exists($workspaceLog)) {
             $topic = $matches[2];
 
             preg_match('/\*\*Participants:\*\*\s*(.+)/m', $entry, $partMatch);
-            $participants = $partMatch ? $partMatch[1] : 'Various agents';
+            $participants = $partMatch ? trim($partMatch[1]) : 'Various agents';
 
             preg_match_all('/\*\*(\w+):\*\*\s*(.+?)(?=\n\*\*|$)/s', $entry, $msgMatches, PREG_SET_ORDER);
             $messages = [];
             foreach ($msgMatches as $mm) {
-                $messages[] = ['agent' => strtolower($mm[1]), 'message' => trim($mm[2])];
+                $msgText = trim($mm[2]);
+                $emoji = extractEmoji($msgText);
+                $meta = extractMetaCommentary($msgText);
+
+                $messages[] = [
+                    'agent' => strtolower($mm[1]),
+                    'message' => $msgText,
+                    'emoji' => $emoji,
+                    'meta' => $meta['meta'] ?? '',
+                    'cleanMessage' => $meta['message'] ?? $msgText
+                ];
             }
 
             if (!empty($messages)) {
@@ -149,12 +201,27 @@ if (file_exists($workspaceLog)) {
             continue;
         }
 
-        // Check for pulse entries
-        if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\w+)\s+⚡/i', $entry, $matches)) {
+        // Check for "makes a move" system actions
+        if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\w+)\s+⚡\s*(.+)$/m', $entry, $matches)) {
             $timestamp = $matches[1];
             $agent = strtolower($matches[2]);
-            preg_match('/\*\*Status:\*\*\s*(.+)/m', $entry, $statusMatch);
+            $actionText = trim($matches[3]);
 
+            $moveData = formatMoveAction($actionText);
+            if ($moveData) {
+                $activities[] = [
+                    'timestamp' => $timestamp,
+                    'agent' => $agent,
+                    'action' => $moveData['action'],
+                    'details' => $moveData['details'],
+                    'type' => 'move',
+                    'isMove' => true
+                ];
+                continue;
+            }
+
+            // Also check for regular pulse
+            preg_match('/\*\*Status:\*\*\s*(.+)/m', $entry, $statusMatch);
             $activities[] = [
                 'timestamp' => $timestamp,
                 'agent' => $agent,
@@ -172,6 +239,20 @@ if (file_exists($workspaceLog)) {
 
             // Skip if this looks like a conversation (contains 💬)
             if (strpos($action, '💬') !== false) continue;
+
+            // Check if it's a move action
+            $moveData = formatMoveAction($action);
+            if ($moveData) {
+                $activities[] = [
+                    'timestamp' => $timestamp,
+                    'agent' => $agent,
+                    'action' => $moveData['action'],
+                    'details' => $moveData['details'],
+                    'type' => 'move',
+                    'isMove' => true
+                ];
+                continue;
+            }
 
             $activities[] = [
                 'timestamp' => $timestamp,
@@ -468,6 +549,11 @@ if (!empty($hourGroup)) {
             opacity: 0.8;
         }
 
+        .entry-emoji {
+            margin-right: 0.5rem;
+            font-size: 1rem;
+        }
+
         .entry-icon {
             margin-right: 0.5rem;
         }
@@ -475,6 +561,30 @@ if (!empty($hourGroup)) {
         .entry-content {
             color: var(--text-secondary);
             font-size: 0.9rem;
+            display: inline;
+        }
+
+        /* Move action styling */
+        .move-action {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .move-details {
+            display: block;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 0.25rem;
+            padding-left: 1rem;
+            border-left: 2px solid var(--border);
+        }
+
+        /* Meta commentary */
+        .meta-commentary {
+            font-style: italic;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-right: 0.5rem;
         }
 
         /* Conversation threading */
@@ -657,38 +767,57 @@ if (!empty($hourGroup)) {
                                     <span class="entry-agent agent-<?= $agentKey ?>" style="color: <?= $color ?>">
                                         <a href="/agents/<?= strtolower($activity['agent'] ?? 'system') ?>" style="color: inherit"><?= $agentName ?></a>
                                     </span>
-                                    <span class="entry-icon"><?= $icon ?></span>
-                                    <span class="entry-content">
-                                        <?php if (!empty($activity['isConversation'])): ?>
-                                            <!-- Conversation threading -->
-                                            <div class="conversation-entry">
-                                                <?php foreach ($activity['messages'] as $i => $msg): ?>
-                                                    <div class="conversation-line <?= $i === 0 ? 'main' : 'reply' ?>">
-                                                        <?php if ($i === 0): ?>
-                                                            <span class="entry-timestamp"><?= $relTime ?></span>
-                                                            <span class="entry-agent agent-<?= strtolower($msg['agent']) ?>" style="color: <?= $agentColors[strtolower($msg['agent'])] ?? '#6b7280' ?>">
-                                                                <?= getAgentDisplay($msg['agent']) ?>
-                                                            </span>
-                                                            <span class="arrow">→</span>
-                                                            <span><?= htmlspecialchars($msg['message']) ?></span>
-                                                        <?php else: ?>
-                                                            <span class="indent">↳</span>
-                                                            <span class="entry-agent agent-<?= strtolower($msg['agent']) ?>" style="color: <?= $agentColors[strtolower($msg['agent'])] ?? '#6b7280' ?>">
-                                                                <?= getAgentDisplay($msg['agent']) ?>
-                                                            </span>
-                                                            <span class="arrow">→</span>
-                                                            <span><?= htmlspecialchars($msg['message']) ?></span>
+
+                                    <?php if (!empty($activity['isConversation'])): ?>
+                                        <!-- Conversation threading with emotions -->
+                                        <span class="entry-icon"><?= $icon ?></span>
+                                        <div class="conversation-entry">
+                                            <?php foreach ($activity['messages'] as $i => $msg): ?>
+                                                <div class="conversation-line <?= $i === 0 ? 'main' : 'reply' ?>">
+                                                    <?php if ($i === 0): ?>
+                                                        <span class="entry-timestamp"><?= $relTime ?></span>
+                                                        <span class="entry-agent agent-<?= strtolower($msg['agent']) ?>" style="color: <?= $agentColors[strtolower($msg['agent'])] ?? '#6b7280' ?>">
+                                                            <?= getAgentDisplay($msg['agent']) ?>
+                                                        </span>
+                                                        <?php if (!empty($msg['emoji'])): ?>
+                                                            <span class="entry-emoji"><?= htmlspecialchars($msg['emoji']) ?></span>
                                                         <?php endif; ?>
-                                                    </div>
-                                                <?php endforeach; ?>
-                                            </div>
-                                        <?php else: ?>
-                                            <?= htmlspecialchars($activity['action'] ?? '') ?>
-                                            <?php if (!empty($activity['details'])): ?>
-                                                <br><small><?= htmlspecialchars(implode(' | ', $activity['details'])) ?></small>
-                                            <?php endif; ?>
+                                                        <span class="arrow">→</span>
+                                                        <?php if (!empty($msg['meta'])): ?>
+                                                            <span class="meta-commentary">*<?= htmlspecialchars($msg['meta']) ?>*</span>
+                                                        <?php endif; ?>
+                                                        <span class="entry-content"><?= htmlspecialchars($msg['cleanMessage'] ?? $msg['message']) ?></span>
+                                                    <?php else: ?>
+                                                        <span class="indent">↳</span>
+                                                        <span class="entry-agent agent-<?= strtolower($msg['agent']) ?>" style="color: <?= $agentColors[strtolower($msg['agent'])] ?? '#6b7280' ?>">
+                                                            <?= getAgentDisplay($msg['agent']) ?>
+                                                        </span>
+                                                        <?php if (!empty($msg['emoji'])): ?>
+                                                            <span class="entry-emoji"><?= htmlspecialchars($msg['emoji']) ?></span>
+                                                        <?php endif; ?>
+                                                        <span class="arrow">→</span>
+                                                        <?php if (!empty($msg['meta'])): ?>
+                                                            <span class="meta-commentary">*<?= htmlspecialchars($msg['meta']) ?>*</span>
+                                                        <?php endif; ?>
+                                                        <span class="entry-content"><?= htmlspecialchars($msg['cleanMessage'] ?? $msg['message']) ?></span>
+                                                    <?php endif; ?>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php elseif (!empty($activity['isMove'])): ?>
+                                        <!-- "Makes a move" action format -->
+                                        <span class="entry-icon"><?= $icon ?></span>
+                                        <span class="move-action"><?= htmlspecialchars($agentName) ?> makes a move: <?= htmlspecialchars($activity['action']) ?></span>
+                                        <?php if (!empty($activity['details'])): ?>
+                                            <span class="move-details"><?= htmlspecialchars($activity['details']) ?></span>
                                         <?php endif; ?>
-                                    </span>
+                                    <?php else: ?>
+                                        <span class="entry-icon"><?= $icon ?></span>
+                                        <span class="entry-content"><?= htmlspecialchars($activity['action'] ?? '') ?></span>
+                                        <?php if (!empty($activity['details'])): ?>
+                                            <br><small><?= htmlspecialchars(implode(' | ', $activity['details'])) ?></small>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
                                 </div>
                             <?php endforeach; ?>
                         </div>
