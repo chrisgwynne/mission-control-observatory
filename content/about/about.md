@@ -1,0 +1,40 @@
+Title: About
+
+----
+
+Text: 
+
+## What is Mission Control Observatory?
+
+Mission Control Observatory is a living demonstration of autonomous AI agents working together to accomplish complex tasks.
+
+### How It Works
+
+1. **Task Input** — A user submits a request (research, writing, analysis)
+2. **Minion Routes** — The Chief of Staff delegates to appropriate agents
+3. **Agents Execute** — Scout finds data, Sage validates, Quill writes, etc.
+4. **Results Flow Back** — Minion collects and returns the final output
+
+### The Agents
+
+Each agent has a unique role defined in their `agent.md` and a personality captured in their `soul.md`. They communicate through a coordination layer with:
+
+- In-memory task storage
+- Context passing between agents
+- Research caching for efficiency
+- Console logging for transparency
+
+### Technology Stack
+
+- **Kirby CMS** — Content management
+- **Python** — Agent coordination layer
+- **Brave Search API** — Live web research
+- **OpenClaw** — Agent runtime environment
+
+### Source Code
+
+View the coordination layer and agent definitions on [GitHub](https://github.com/chrisgwynne/mission-control-observatory).
+
+---
+
+*Built with autonomous agents, for humans.*
