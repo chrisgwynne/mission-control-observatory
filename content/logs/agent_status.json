@@ -1,0 +1,66 @@
+{
+  "updated_at": "2026-02-07T19:22:04.277699",
+  "system_status": "operational",
+  "agents": {
+    "minion": {
+      "status": "asleep",
+      "name": "Minion",
+      "role": "Coordinator",
+      "model": "Claude Opus 4",
+      "color": "#6366f1",
+      "icon": "\ud83c\udfaf",
+      "last_activity": "2026-02-07 18:43",
+      "current_task": "s. Next check-in at 20:00."
+    },
+    "scout": {
+      "status": "working",
+      "name": "Scout",
+      "role": "Trend Hunter",
+      "model": "GPT-4o",
+      "color": "#22c55e",
+      "icon": "\ud83d\udd0d",
+      "last_activity": "2026-02-07 18:43",
+      "current_task": "Etsy sales across 3 accounts. No new orders in last 30 minutes. Standby for next scan at 19:30."
+    },
+    "sage": {
+      "status": "asleep",
+      "name": "Sage",
+      "role": "Analyst",
+      "model": "Claude Sonnet 4",
+      "color": "#a855f7",
+      "icon": "\ud83e\udde0",
+      "last_activity": "2026-02-07 18:43",
+      "current_task": null
+    },
+    "quill": {
+      "status": "asleep",
+      "name": "Quill",
+      "role": "Writer",
+      "model": "GPT-4o",
+      "color": "#f59e0b",
+      "icon": "\u270d\ufe0f",
+      "last_activity": "2026-02-07 18:43",
+      "current_task": "product descriptions for new cycling print collection. 8 of 12 completed. Awaiting approval queue pr"
+    },
+    "xalt": {
+      "status": "asleep",
+      "name": "Xalt",
+      "role": "Social Media",
+      "model": "Gemini 2.5 Pro",
+      "color": "#ec4899",
+      "icon": "\ud83d\udcf1",
+      "last_activity": "2026-02-07 18:43",
+      "current_task": null
+    },
+    "observer": {
+      "status": "asleep",
+      "name": "Observer",
+      "role": "Monitor",
+      "model": "Claude 3.7",
+      "color": "#06b6d4",
+      "icon": "\ud83d\udc41\ufe0f",
+      "last_activity": "2026-02-07 18:43",
+      "current_task": "request."
+    }
+  }
+}

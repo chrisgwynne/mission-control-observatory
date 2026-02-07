@@ -7,6 +7,7 @@
 // Parse activity log file
 $activityFile = $kirby->root('content') . '/logs/activity.md';
 $workspaceLog = '/home/chris/.openclaw/workspace/mission-control/logs/activity.md';
+$agentStatusFile = '/home/chris/.openclaw/workspace/mission-control/logs/agent_status.json';
 
 $activities = [];
 $source = '';
@@ -22,19 +23,105 @@ if (file_exists($activityFile)) {
     $source = 'none';
 }
 
+// Load agent status if available
+$agentStatuses = [];
+if (file_exists($agentStatusFile)) {
+    $agentStatuses = json_decode(file_get_contents($agentStatusFile), true)['agents'] ?? [];
+}
+
 // Parse entries
 $entries = preg_split('/\n---\n/', $content);
 foreach ($entries as $entry) {
     $entry = trim($entry);
     if (empty($entry) || strpos($entry, '# Mission Control Activity Log') !== false) continue;
     
+    // Check for hourly check-in conversations
+    if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+🔄\s+Hourly Check-in:\s*(.+)$/m', $entry, $matches)) {
+        $timestamp = $matches[1];
+        $topic = $matches[2];
+        
+        // Extract participants
+        preg_match('/\*\*Participants:\*\*\s*(.+)/m', $entry, $partMatch);
+        $participants = $partMatch ? $partMatch[1] : 'Various agents';
+        
+        // Extract messages
+        preg_match_all('/\*\*(\w+):\*\*\s*(.+?)(?=\n\*\*|$)/s', $entry, $msgMatches, PREG_SET_ORDER);
+        $messages = [];
+        foreach ($msgMatches as $mm) {
+            $messages[] = ['agent' => strtolower($mm[1]), 'message' => trim($mm[2])];
+        }
+        
+        if (!empty($messages)) {
+            $activities[] = [
+                'timestamp' => $timestamp,
+                'agent' => 'system',
+                'agentDisplay' => '🔄 Team',
+                'action' => "Hourly Check-in: $topic",
+                'type' => 'conversation',
+                'participants' => $participants,
+                'messages' => $messages,
+                'isConversation' => true
+            ];
+        }
+        continue;
+    }
+    
+    // Check for security alerts
+    if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+🛡️\s*SECURITY/i', $entry, $matches)) {
+        $timestamp = $matches[1];
+        
+        preg_match('/\*\*Type:\*\*\s*(.+)/m', $entry, $typeMatch);
+        preg_match('/\*\*Status:\*\*\s*(.+)/m', $entry, $statusMatch);
+        preg_match('/\*\*Action:\*\*\s*(.+)/m', $entry, $actionMatch);
+        
+        $activities[] = [
+            'timestamp' => $timestamp,
+            'agent' => 'observer',
+            'agentDisplay' => '🛡️ Security',
+            'action' => $typeMatch ? trim($typeMatch[1]) : 'Security Alert',
+            'type' => 'security',
+            'details' => [
+                'Status' => $statusMatch ? trim($statusMatch[1]) : 'Unknown',
+                'Action' => $actionMatch ? trim($actionMatch[1]) : 'Monitoring'
+            ]
+        ];
+        continue;
+    }
+    
+    // Check for sales updates
+    if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+.*💰/i', $entry, $matches)) {
+        $timestamp = $matches[1];
+        
+        preg_match('/\*\*Store:\*\*\s*(.+)/m', $entry, $storeMatch);
+        preg_match('/\*\*Product:\*\*\s*(.+)/m', $entry, $prodMatch);
+        preg_match('/\*\*Revenue:\*\*\s*(.+)/m', $entry, $revMatch);
+        
+        $activities[] = [
+            'timestamp' => $timestamp,
+            'agent' => 'scout',
+            'agentDisplay' => '💰 Scout',
+            'action' => 'New Sale Detected',
+            'type' => 'sale',
+            'details' => [
+                'Store' => $storeMatch ? trim($storeMatch[1]) : 'Unknown',
+                'Product' => $prodMatch ? trim($prodMatch[1]) : 'Unknown',
+                'Revenue' => $revMatch ? trim($revMatch[1]) : 'Unknown'
+            ]
+        ];
+        continue;
+    }
+    
+    // Standard activity entry
     if (preg_match('/^##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(.+?)\s+(.+)$/m', $entry, $matches)) {
         $timestamp = $matches[1];
-        $agent = $matches[2];
+        $agent = strtolower($matches[2]);
         $action = $matches[3];
         
+        // Clean up agent name
+        $agent = preg_replace('/[^a-z]/', '', $agent);
+        
         $details = [];
-        preg_match_all('/^- \*\*(.+?):\*\*\s*(.+)$/m', $entry, $detailMatches, PREG_SET_ORDER);
+        preg_match_all('/^\s*-\s+\*\*(.+?):\*\*\s*(.+)$/m', $entry, $detailMatches, PREG_SET_ORDER);
         foreach ($detailMatches as $dm) {
             $details[$dm[1]] = $dm[2];
         }
@@ -43,10 +130,12 @@ foreach ($entries as $entry) {
         $type = 'system';
         if (stripos($action, 'search') !== false) $type = 'search';
         elseif (stripos($action, 'completed') !== false) $type = 'complete';
+        elseif (stripos($action, 'detected') !== false) $type = 'detect';
+        elseif (stripos($action, 'sale') !== false) $type = 'sale';
         
         $activities[] = [
             'timestamp' => $timestamp,
-            'agent' => strtolower($agent),
+            'agent' => $agent,
             'agentDisplay' => ucfirst($agent),
             'action' => $action,
             'type' => $type,
@@ -57,23 +146,27 @@ foreach ($entries as $entry) {
 
 $activities = array_reverse($activities);
 
-// Build agent last activity map for cards (do this BEFORE rendering)
-$agentLastActivity = [];
-foreach ($activities as $item) {
-    if (!isset($agentLastActivity[$item['agent']])) {
-        $agentLastActivity[$item['agent']] = $item;
-    }
-}
-
 // Agent config
 $agents = [
-    'minion' => ['name' => 'Minion', 'role' => 'Chief of Staff', 'color' => '#3b82f6', 'icon' => '👑'],
-    'scout' => ['name' => 'Scout', 'role' => 'Head of Growth', 'color' => '#22c55e', 'icon' => '🔭'],
-    'sage' => ['name' => 'Sage', 'role' => 'Head of Research', 'color' => '#a855f7', 'icon' => '📚'],
-    'quill' => ['name' => 'Quill', 'role' => 'Creative Director', 'color' => '#f59e0b', 'icon' => '✍️'],
-    'xalt' => ['name' => 'Xalt', 'role' => 'Social Media Director', 'color' => '#ec4899', 'icon' => '📱'],
-    'observer' => ['name' => 'Observer', 'role' => 'Operations Analyst', 'color' => '#64748b', 'icon' => '👁️']
+    'minion' => ['name' => 'Minion', 'role' => 'Coordinator', 'model' => 'Claude Opus 4', 'color' => '#6366f1', 'icon' => '🎯'],
+    'scout' => ['name' => 'Scout', 'role' => 'Trend Hunter', 'model' => 'GPT-4o', 'color' => '#22c55e', 'icon' => '🔍'],
+    'sage' => ['name' => 'Sage', 'role' => 'Analyst', 'model' => 'Claude Sonnet 4', 'color' => '#a855f7', 'icon' => '🧠'],
+    'quill' => ['name' => 'Quill', 'role' => 'Writer', 'model' => 'GPT-4o', 'color' => '#f59e0b', 'icon' => '✍️'],
+    'xalt' => ['name' => 'Xalt', 'role' => 'Social Media', 'model' => 'Gemini 2.5 Pro', 'color' => '#ec4899', 'icon' => '📱'],
+    'observer' => ['name' => 'Observer', 'role' => 'Monitor', 'model' => 'Claude 3.7', 'color' => '#06b6d4', 'icon' => '👁️']
 ];
+
+// Get system status from activity log header
+$systemStatus = '🟢 Operational';
+$shieldStatus = '🛡️ Protected';
+$activeAgents = 0;
+
+if (preg_match('/\*\*System Status:\*\*\s*(.+)/m', $content, $m)) $systemStatus = trim($m[1]);
+if (preg_match('/\*\*SHIELD Status:\*\*\s*(.+)/m', $content, $m)) $shieldStatus = trim($m[1]);
+
+foreach ($agentStatuses as $key => $status) {
+    if ($status['status'] !== 'asleep') $activeAgents++;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -87,8 +180,8 @@ $agents = [
             --bg-primary: #0a0a0f; --bg-secondary: #0f172a; --bg-tertiary: #1e293b;
             --border: #334155; --text-primary: #f8fafc; --text-secondary: #e2e8f0;
             --text-muted: #94a3b8; --text-dim: #64748b;
-            --accent-blue: #3b82f6; --accent-green: #22c55e; --accent-purple: #a855f7;
-            --accent-amber: #f59e0b; --accent-pink: #ec4899; --accent-slate: #64748b;
+            --accent-blue: #6366f1; --accent-green: #22c55e; --accent-purple: #a855f7;
+            --accent-amber: #f59e0b; --accent-pink: #ec4899; --accent-cyan: #06b6d4;
         }
         body {
             font-family: 'SF Mono', Monaco, Inconsolata, 'Fira Code', monospace;
@@ -110,13 +203,18 @@ $agents = [
         .logo-icon {
             width: 36px; height: 36px; background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
             border-radius: 8px; display: flex; align-items: center; justify-content: center;
-            font-weight: bold; font-size: 14px; box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+            font-weight: bold; font-size: 14px; box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
         }
-        .nav-links { margin-left: auto; display: flex; gap: 2rem; }
+        .status-bar {
+            margin-left: auto; display: flex; align-items: center; gap: 1.5rem;
+            font-size: 0.8rem; color: var(--text-muted);
+        }
+        .status-item { display: flex; align-items: center; gap: 0.5rem; }
+        .nav-links { display: flex; gap: 2rem; }
         .nav-links a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; transition: color 0.2s; }
         .nav-links a:hover { color: var(--text-primary); }
         .main-content { max-width: 1400px; margin: 0 auto; padding: 2rem; }
-        .page-header { margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between; }
+        .page-header { margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
         .page-title { font-size: 2rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.75rem; }
         .live-badge {
             display: inline-flex; align-items: center; gap: 0.5rem;
@@ -129,8 +227,6 @@ $agents = [
             border-radius: 50%; animation: pulse 1.5s ease-in-out infinite;
         }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        .connection-status { font-size: 0.8rem; color: var(--text-dim); }
-        .connection-status.connected { color: var(--accent-green); }
         
         /* Agent Cards */
         .agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
@@ -140,26 +236,34 @@ $agents = [
         }
         .agent-card::before {
             content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-            background: var(--agent-color, var(--accent-blue)); opacity: 0.5;
+            background: var(--agent-color); opacity: 0.3;
         }
-        .agent-card.active {
-            border-color: var(--agent-color, var(--accent-blue));
-            box-shadow: 0 0 30px rgba(0,0,0,0.3), 0 0 0 1px var(--agent-color, var(--accent-blue));
+        .agent-card.working {
+            border-color: var(--agent-color);
+            box-shadow: 0 0 30px rgba(0,0,0,0.3), 0 0 0 1px var(--agent-color), 0 0 20px rgba(var(--agent-color-rgb), 0.2);
         }
-        .agent-card.active::before { opacity: 1; box-shadow: 0 0 20px var(--agent-color, var(--accent-blue)); }
-        .agent-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+        .agent-card.working::before { opacity: 1; box-shadow: 0 0 20px var(--agent-color); }
+        .agent-card.awake::before { opacity: 0.6; }
+        .agent-card.asleep { opacity: 0.7; }
+        .agent-card.asleep::before { opacity: 0.1; }
+        .agent-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
         .agent-avatar {
             width: 40px; height: 40px; border-radius: 10px; display: flex;
             align-items: center; justify-content: center; font-size: 1.25rem;
-            background: var(--agent-color, var(--accent-blue)); opacity: 0.9;
+            background: var(--agent-color); opacity: 0.9;
         }
         .agent-info h3 { color: var(--text-primary); font-size: 1rem; font-weight: 600; }
         .agent-info .role { font-size: 0.75rem; color: var(--text-dim); }
-        .agent-status { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; font-size: 0.8rem; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
-        .status-dot.working { background: var(--accent-green); animation: pulse 1s infinite; }
-        .status-text { color: var(--text-muted); }
+        .agent-model { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+        .agent-status { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot.working { background: var(--accent-green); animation: pulse 1s infinite; box-shadow: 0 0 8px var(--accent-green); }
+        .status-dot.awake { background: var(--accent-amber); }
+        .status-dot.asleep { background: var(--text-dim); }
+        .status-text { text-transform: uppercase; font-size: 0.7rem; font-weight: 600; }
         .status-text.working { color: var(--accent-green); }
+        .status-text.awake { color: var(--accent-amber); }
+        .status-text.asleep { color: var(--text-dim); }
         .last-action { margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         
         /* Activity Feed */
@@ -168,7 +272,7 @@ $agents = [
             background: var(--bg-tertiary); padding: 1rem 1.5rem;
             display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);
         }
-        .feed-title { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); text-transform: uppercase; }
+        .feed-title { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); text-transform: uppercase; display: flex; align-items: center; gap: 0.5rem; }
         .feed-controls { display: flex; gap: 0.75rem; }
         .control-btn {
             background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-muted);
@@ -179,21 +283,28 @@ $agents = [
         .control-btn.active { background: var(--accent-blue); border-color: var(--accent-blue); color: white; }
         .activity-list { max-height: 60vh; overflow-y: auto; padding: 0.5rem 0; }
         .activity-item {
-            display: flex; gap: 1rem; padding: 0.875rem 1.5rem;
+            display: flex; gap: 1rem; padding: 1rem 1.5rem;
             border-bottom: 1px solid var(--border); transition: all 0.3s ease;
             animation: fadeIn 0.5s ease forwards;
         }
         .activity-item:hover { background: rgba(255,255,255,0.02); }
         .activity-item.new { background: rgba(34, 197, 94, 0.05); border-left: 3px solid var(--accent-green); }
+        .activity-item.security { background: rgba(239, 68, 68, 0.05); border-left: 3px solid #ef4444; }
+        .activity-item.sale { background: rgba(34, 197, 94, 0.05); border-left: 3px solid var(--accent-green); }
+        .activity-item.conversation { background: rgba(168, 85, 247, 0.05); border-left: 3px solid var(--accent-purple); }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
         .activity-icon {
             width: 32px; height: 32px; border-radius: 8px;
             display: flex; align-items: center; justify-content: center;
             font-size: 1rem; flex-shrink: 0;
         }
-        .activity-icon.system { background: rgba(59, 130, 246, 0.15); }
+        .activity-icon.system { background: rgba(99, 102, 241, 0.15); }
         .activity-icon.search { background: rgba(34, 197, 94, 0.15); }
         .activity-icon.complete { background: rgba(168, 85, 247, 0.15); }
+        .activity-icon.detect { background: rgba(6, 182, 212, 0.15); }
+        .activity-icon.sale { background: rgba(34, 197, 94, 0.15); }
+        .activity-icon.security { background: rgba(239, 68, 68, 0.15); }
+        .activity-icon.conversation { background: rgba(168, 85, 247, 0.15); }
         .activity-content { flex: 1; min-width: 0; }
         .activity-meta { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem; }
         .activity-agent { font-size: 0.8rem; font-weight: 600; }
@@ -204,26 +315,36 @@ $agents = [
         .detail-label { color: var(--text-dim); }
         .detail-value { color: var(--text-muted); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         
-        /* Expandable */
-        .expand-toggle {
-            width: 100%; padding: 0.75rem 1.5rem; background: transparent; border: none;
-            color: var(--text-dim); font-family: inherit; font-size: 0.8rem;
-            cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-        }
-        .expand-toggle:hover { color: var(--text-secondary); background: rgba(255,255,255,0.02); }
-        .collapsed-items { display: none; }
-        .collapsed-items.expanded { display: block; }
+        /* Conversation styling */
+        .conversation-messages { margin-top: 0.5rem; padding: 0.75rem; background: var(--bg-primary); border-radius: 8px; }
+        .conv-message { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 0.8rem; }
+        .conv-message:last-child { margin-bottom: 0; }
+        .conv-agent { font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+        .conv-text { color: var(--text-secondary); }
         
         .site-footer { text-align: center; padding: 2rem; color: var(--text-dim); font-size: 0.8rem; border-top: 1px solid var(--border); margin-top: 2rem; }
         .activity-list::-webkit-scrollbar { width: 8px; }
         .activity-list::-webkit-scrollbar-track { background: var(--bg-secondary); }
         .activity-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        
+        /* SHIELD badge */
+        .shield-badge {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.375rem 0.75rem; background: rgba(6, 182, 212, 0.15);
+            border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 20px;
+            font-size: 0.7rem; font-weight: 600; color: var(--accent-cyan);
+        }
     </style>
 </head>
 <body>
     <header class="site-header">
         <div class="header-content">
             <a href="/" class="logo"><div class="logo-icon">MC</div><span>Mission Control</span></a>
+            <div class="status-bar">
+                <span class="status-item"><?= $systemStatus ?></span>
+                <span class="status-item"><?= $shieldStatus ?></span>
+                <span class="status-item"><?= $activeAgents ?>/6 Agents Active</span>
+            </div>
             <nav class="nav-links">
                 <a href="/">Home</a>
                 <a href="/agents">Agents</a>
@@ -236,22 +357,17 @@ $agents = [
     <main class="main-content">
         <div class="page-header">
             <h1 class="page-title">Observatory <span class="live-badge">Live</span></h1>
-            <span id="connectionStatus" class="connection-status">Connecting...</span>
+            <span class="shield-badge">🛡️ SHIELD Active</span>
         </div>
 
         <!-- Agent Status Cards -->
         <div class="agent-grid">
             <?php foreach ($agents as $key => $agent): 
-                $lastActivity = $agentLastActivity[$key] ?? null;
-                $isWorking = false;
-                $lastAction = 'No activity yet';
-                if ($lastActivity) {
-                    $lastAction = $lastActivity['action'];
-                    // Check if agent is currently working (recent active tasks)
-                    $isWorking = preg_match('/received|delegated|search|filtered|detected|scanning|analyzed|starting|💰/i', $lastAction);
-                }
+                $statusInfo = $agentStatuses[$key] ?? ['status' => 'asleep', 'current_task' => null];
+                $status = $statusInfo['status'];
+                $task = $statusInfo['current_task'] ?? 'No current task';
             ?>
-            <div class="agent-card <?= $isWorking ? 'active' : '' ?>" data-agent="<?= $key ?>" style="--agent-color: <?= $agent['color'] ?>">
+            <div class="agent-card <?= $status ?>" style="--agent-color: <?= $agent['color'] ?>">
                 <div class="agent-header">
                     <div class="agent-avatar"><?= $agent['icon'] ?></div>
                     <div class="agent-info">
@@ -259,11 +375,12 @@ $agents = [
                         <span class="role"><?= $agent['role'] ?></span>
                     </div>
                 </div>
+                <div class="agent-model"><?= $agent['model'] ?></div>
                 <div class="agent-status">
-                    <span class="status-dot <?= $isWorking ? 'working' : 'idle' ?>"></span>
-                    <span class="status-text <?= $isWorking ? 'working' : '' ?>"><?= $isWorking ? 'Working' : 'Idle' ?></span>
+                    <span class="status-dot <?= $status ?>"></span>
+                    <span class="status-text <?= $status ?>"><?= strtoupper($status) ?></span>
                 </div>
-                <div class="last-action"><?= $lastAction ?></div>
+                <div class="last-action" title="<?= htmlspecialchars($task) ?>"><?= htmlspecialchars($task) ?></div>
             </div>
             <?php endforeach; ?>
         </div>
@@ -271,28 +388,32 @@ $agents = [
         <!-- Activity Feed -->
         <div class="feed-container">
             <div class="feed-header">
-                <span class="feed-title">Activity Log</span>
+                <span class="feed-title">📡 Activity Feed</span>
                 <div class="feed-controls">
-                    <button class="control-btn" id="autoScrollBtn" onclick="toggleAutoScroll()">⬇ Auto-scroll</button>
                     <button class="control-btn" onclick="location.reload()">↻ Refresh</button>
                 </div>
             </div>
             
             <div class="activity-list" id="activityList">
-                <?php foreach (array_slice($activities, 0, 20) as $item): ?>
-                <div class="activity-item" data-timestamp="<?= $item['timestamp'] ?>" data-agent="<?= $item['agent'] ?>">
-                    <?php $color = $agents[$item['agent']]['color'] ?? '#64748b'; ?>
-                    <?php $icons = ['system' => '⚡', 'search' => '🔍', 'complete' => '✅']; ?>
-                    
-                    <div class="activity-icon <?= $item['type'] ?>" style="color: <?= $color ?>">
-                        <?= $icons[$item['type']] ?? '⚡' ?>
+                <?php foreach (array_slice($activities, 0, 25) as $item): 
+                    $typeClass = $item['type'] ?? 'system';
+                    $color = $agents[$item['agent']]['color'] ?? '#64748b';
+                    $icons = [
+                        'system' => '⚡', 'search' => '🔍', 'complete' => '✅', 
+                        'detect' => '👁️', 'sale' => '💰', 'security' => '🛡️',
+                        'conversation' => '🔄'
+                    ];
+                ?>
+                <div class="activity-item <?= $typeClass ?>" data-timestamp="<?= $item['timestamp'] ?>">
+                    <div class="activity-icon <?= $typeClass ?>" style="color: <?= $color ?>">
+                        <?= $icons[$typeClass] ?? '⚡' ?>
                     </div>
                     
                     <div class="activity-content">
                         <div class="activity-meta">
                             <span class="activity-agent" style="color: <?= $color ?>"><?= $item['agentDisplay'] ?></span>
                             <span class="activity-action"><?= $item['action'] ?></span>
-                            <span class="activity-time"><?= substr($item['timestamp'], 11) ?></span>
+                            <span class="activity-time"><?= substr($item['timestamp'], 11, 5) ?></span>
                         </div>
                         
                         <?php if (!empty($item['details'])): ?>
@@ -305,6 +426,22 @@ $agents = [
                             <?php endforeach; ?>
                         </div>
                         <?php endif; ?>
+                        
+                        <?php if (!empty($item['messages'])): ?>
+                        <div class="conversation-messages">
+                            <?php foreach (array_slice($item['messages'], 0, 3) as $msg): 
+                                $msgColor = $agents[$msg['agent']]['color'] ?? '#64748b';
+                            ?>
+                            <div class="conv-message">
+                                <span class="conv-agent" style="color: <?= $msgColor ?>"><?= ucfirst($msg['agent']) ?>:</span>
+                                <span class="conv-text"><?= htmlspecialchars(substr($msg['message'], 0, 100)) ?><?= strlen($msg['message']) > 100 ? '...' : '' ?></span>
+                            </div>
+                            <?php endforeach; ?>
+                            <?php if (count($item['messages']) > 3): ?>
+                            <div class="conv-message" style="color: var(--text-dim);">... and <?= count($item['messages']) - 3 ?> more messages</div>
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <?php endforeach; ?>
@@ -312,56 +449,14 @@ $agents = [
         </div>
     </main>
 
-    <footer class="site-footer">Mission Control Observatory &middot; Real-time agent activity</footer>
+    <footer class="site-footer">Mission Control Observatory &middot; Real-time agent activity &middot; 🛡️ Protected by SHIELD</footer>
 
     <script>
-        const agents = ['minion','scout','sage','quill','xalt','observer'];
-        const colors = { minion:'#3b82f6', scout:'#22c55e', sage:'#a855f7', quill:'#f59e0b', xalt:'#ec4899', observer:'#64748b' };
-        const icons = { system:'⚡', search:'🔍', complete:'✅' };
-        let autoScroll = false;
-        
-        function updateAgentStatus() {
-            const items = document.querySelectorAll('.activity-item');
-            const lastByAgent = {};
-            
-            items.forEach(item => {
-                const agent = item.dataset.agent;
-                if (!lastByAgent[agent]) lastByAgent[agent] = item;
-            });
-            
-            agents.forEach(agent => {
-                const card = document.querySelector(`[data-agent="${agent}"]`);
-                const dot = document.getElementById(`status-${agent}`);
-                const text = document.getElementById(`status-text-${agent}`);
-                const action = document.getElementById(`action-${agent}`);
-                
-                if (lastByAgent[agent]) {
-                    const actionText = lastByAgent[agent].querySelector('.activity-action').textContent;
-                    const isWorking = /received|delegated|search|filtered/i.test(actionText);
-                    
-                    card.classList.toggle('active', isWorking);
-                    dot.classList.toggle('working', isWorking);
-                    dot.classList.toggle('idle', !isWorking);
-                    text.classList.toggle('working', isWorking);
-                    text.textContent = isWorking ? 'Working' : 'Idle';
-                    action.textContent = actionText;
-                }
-            });
-        }
-        
-        function toggleAutoScroll() {
-            autoScroll = !autoScroll;
-            document.getElementById('autoScrollBtn').classList.toggle('active', autoScroll);
-        }
-        
-        // Initial status update
-        updateAgentStatus();
-        
-        // Simulate real-time updates
+        // Auto-refresh every 30 seconds
         setInterval(() => {
-            document.getElementById('connectionStatus').textContent = 'Connected';
-            document.getElementById('connectionStatus').classList.add('connected');
-        }, 1000);
+            location.reload();
+        }, 30000);
     </script>
 </body>
 </html>
+
