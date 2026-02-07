@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-02-07T19:25:04.410435",
+  "updated_at": "2026-02-07T19:25:45.346542",
   "system_status": "operational",
   "agents": {
     "minion": {
@@ -10,7 +10,7 @@
       "color": "#6366f1",
       "icon": "\ud83c\udfaf",
       "last_activity": "2026-02-07 18:43",
-      "current_task": "s. Next check-in at 20:00."
+      "current_task": "Handoff"
     },
     "scout": {
       "status": "working",
