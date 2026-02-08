@@ -84,20 +84,46 @@ if (file_exists($workspaceLog)) {
         $entry = trim($entry);
         if (empty($entry) || strpos($entry, '# Mission Control Activity Log') !== false) continue;
 
-        // Extract timestamp and actor
+        // Check for hourly check-in conversations (special format)
+        if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+🔄\s+Hourly Check-in:\s*(.+)$/m', $entry, $topicMatch)) {
+            $timestamp = $topicMatch[1];
+            $topic = trim($topicMatch[2]);
+
+            // Extract all **Name:** messages
+            preg_match_all('/\*\*(\w+):\*\*\s*(.+?)(?=\n\*\*|$)/s', $entry, $msgMatches, PREG_SET_ORDER);
+
+            foreach ($msgMatches as $msg) {
+                $actor = strtolower($msg[1]);
+                $message = trim($msg[2]);
+
+                // Determine type
+                $type = detectEntryType($message, '');
+
+                $feed[] = [
+                    'timestamp' => $timestamp,
+                    'actor' => $actor,
+                    'action' => $message,
+                    'details' => '',
+                    'type' => $type
+                ];
+            }
+            continue;
+        }
+
+        // Standard format: ## timestamp Actor action
         if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\w+)\s*(.+)$/m', $entry, $matches)) {
             $timestamp = $matches[1];
             $actor = strtolower($matches[2]);
             $action = trim($matches[3]);
 
-            // Extract details
+            // Extract details after •
             $details = '';
             if (preg_match('/•\s*(.+?)(\n|$)/', $action, $detailMatch)) {
                 $details = trim($detailMatch[1]);
                 $action = trim(str_replace($detailMatch[0], '', $action));
             }
 
-            // Remove emoji prefix from action
+            // Remove emoji prefix
             $action = trim(preg_replace('/^[💬⚡🛡️💰📊🔄✅🔍]+\s*/', '', $action));
 
             $type = detectEntryType($action, $details);
