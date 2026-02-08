@@ -84,24 +84,37 @@ if (file_exists($workspaceLog)) {
         $entry = trim($entry);
         if (empty($entry) || strpos($entry, '# Mission Control Activity Log') !== false) continue;
 
-        // Check for hourly check-in conversations (special format)
-        if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+🔄\s+Hourly Check-in:\s*(.+)$/m', $entry, $topicMatch)) {
-            $timestamp = $topicMatch[1];
-            $topic = trim($topicMatch[2]);
+        // Extract timestamp from ## line
+        preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/', $entry, $tsMatch);
+        $timestamp = $tsMatch[1] ?? null;
 
-            // Extract all **Name:** messages
-            preg_match_all('/\*\*(\w+):\*\*\s*(.+?)(?=\n\*\*|$)/s', $entry, $msgMatches, PREG_SET_ORDER);
+        if (!$timestamp) continue;
+
+        // Check for hourly check-in conversations: **Name:** message
+        if (preg_match('/\*\*(\w+):\*\*/', $entry)) {
+            // This is a conversation entry - extract all **Name:** messages
+            preg_match_all('/\*\*(\w+):\*\*\s*(.+?)(?=\n\*\*|\n---|$)/s', $entry, $msgMatches, PREG_SET_ORDER);
 
             foreach ($msgMatches as $msg) {
-                $actor = strtolower($msg[1]);
+                $name = $msg[1];
                 $message = trim($msg[2]);
 
-                // Determine type
-                $type = detectEntryType($message, '');
+                // Skip metadata fields
+                if (in_array(strtolower($name), ['initiated', 'participants', 'date', 'location', 'status'])) continue;
+
+                // Determine type based on content
+                $msgLower = strtolower($message);
+                if (strpos($msgLower, 'proposal') !== false || strpos($msgLower, 'approved') !== false) {
+                    $type = 'action';
+                } elseif (strpos($msgLower, '?') !== false) {
+                    $type = 'commentary';
+                } else {
+                    $type = 'pulse';
+                }
 
                 $feed[] = [
                     'timestamp' => $timestamp,
-                    'actor' => $actor,
+                    'actor' => strtolower($name),
                     'action' => $message,
                     'details' => '',
                     'type' => $type
@@ -110,11 +123,11 @@ if (file_exists($workspaceLog)) {
             continue;
         }
 
-        // Standard format: ## timestamp Actor action
-        if (preg_match('/##\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\w+)\s*(.+)$/m', $entry, $matches)) {
-            $timestamp = $matches[1];
-            $actor = strtolower($matches[2]);
-            $action = trim($matches[3]);
+        // Standard format: ## timestamp Actor action • details
+        preg_match('/##\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+(\w+)\s*(.+)/m', $entry, $stdMatch);
+        if ($stdMatch) {
+            $actor = strtolower($stdMatch[1]);
+            $action = trim($stdMatch[2]);
 
             // Extract details after •
             $details = '';
